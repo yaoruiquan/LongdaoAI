@@ -918,9 +918,9 @@ pnpm --dir frontend run build
 
 以下全部通过后，允许封闭内测上线：
 
-- [ ] REL-001 自有固定版本镜像
-- [ ] REL-002 Git 提交和版本 tag
-- [ ] MIG-001 数据库升级迁移入口
+- [x] REL-001 自有固定版本镜像（deploy/build_production_image.sh，Dockerfile OCI label）
+- [x] REL-002 Git 提交和版本 tag（tag v2026.07.15-1 -> commit f159e7a4）
+- [x] MIG-001 数据库升级迁移入口（sub2api -migrate 独立命令）
 - [ ] MIG-002 发布前数据库备份
 - [ ] DEP-001 生产 Docker Compose
 - [ ] DEP-002 HTTPS 和反向代理
