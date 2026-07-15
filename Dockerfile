@@ -83,10 +83,21 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
+# Build args must be re-declared in each stage to be usable here (final stage).
+# Used for OCI image labels so the image can be mapped back to a git commit.
+ARG VERSION=
+ARG COMMIT=docker
+ARG DATE
+
 # Labels
-LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
-LABEL description="Sub2API - AI API Gateway Platform"
-LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
+LABEL maintainer="yaoruiquan"
+LABEL description="龙道 AI - Token 中转平台 (基于 Sub2API)"
+LABEL org.opencontainers.image.source="https://github.com/yaoruiquan/LongdaoAI"
+LABEL org.opencontainers.image.title="龙道 AI"
+LABEL org.opencontainers.image.description="龙道 AI - Token 中转平台 (基于 Sub2API)"
+LABEL org.opencontainers.image.revision="${COMMIT}"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.created="${DATE}"
 
 # Install runtime dependencies
 RUN apk add --no-cache \
