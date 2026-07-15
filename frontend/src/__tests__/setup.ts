@@ -5,6 +5,41 @@
 import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
 
+// Node 26 exposes an experimental global localStorage getter that returns
+// undefined unless --localstorage-file is configured. Install a deterministic
+// in-memory implementation before application modules are imported.
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>()
+
+  return {
+    get length() {
+      return values.size
+    },
+    clear() {
+      values.clear()
+    },
+    getItem(key: string) {
+      return values.get(String(key)) ?? null
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null
+    },
+    removeItem(key: string) {
+      values.delete(String(key))
+    },
+    setItem(key: string, value: string) {
+      values.set(String(key), String(value))
+    }
+  }
+}
+
+if (!globalThis.localStorage || typeof globalThis.localStorage.getItem !== 'function') {
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: createMemoryStorage()
+  })
+}
+
 // Mock requestIdleCallback (Safari < 15 不支持)
 if (typeof globalThis.requestIdleCallback === 'undefined') {
   globalThis.requestIdleCallback = ((callback: IdleRequestCallback) => {
