@@ -202,6 +202,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/recharge',
+    name: 'Recharge',
+    component: () => import('@/views/user/RechargeView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Balance Recharge',
+      titleKey: 'longdao.finance.recharge.title',
+      descriptionKey: 'longdao.finance.recharge.description'
+    }
+  },
+  {
+    path: '/orders',
+    name: 'Orders',
+    component: () => import('@/views/user/OrdersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Order Records',
+      titleKey: 'longdao.finance.orders.title',
+      descriptionKey: 'longdao.finance.orders.description'
+    }
+  },
+  {
     path: '/sora',
     name: 'Sora',
     component: () => import('@/views/user/SoraView.vue'),
@@ -351,6 +375,66 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/payment-orders',
+    name: 'AdminPaymentOrders',
+    component: () => import('@/views/admin/PaymentOrdersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Payment Orders',
+      titleKey: 'longdao.adminConstruction.paymentOrders.title',
+      descriptionKey: 'longdao.adminConstruction.paymentOrders.description'
+    }
+  },
+  {
+    path: '/admin/fund-transactions',
+    name: 'AdminFundTransactions',
+    component: () => import('@/views/admin/FundTransactionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Fund Transactions',
+      titleKey: 'longdao.adminConstruction.fundTransactions.title',
+      descriptionKey: 'longdao.adminConstruction.fundTransactions.description'
+    }
+  },
+  {
+    path: '/admin/risk-events',
+    name: 'AdminRiskEvents',
+    component: () => import('@/views/admin/RiskEventsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Risk Events',
+      titleKey: 'longdao.adminConstruction.riskEvents.title',
+      descriptionKey: 'longdao.adminConstruction.riskEvents.description'
+    }
+  },
+  {
+    path: '/admin/data-management',
+    name: 'AdminDataManagement',
+    component: () => import('@/views/admin/DataManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Data Management',
+      titleKey: 'longdao.nav.dataManagement',
+      descriptionKey: 'longdao.nav.dataManagementDescription'
+    }
+  },
+  {
+    path: '/admin/backup',
+    name: 'AdminBackup',
+    component: () => import('@/views/admin/BackupView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Backup and Restore',
+      titleKey: 'longdao.nav.backup',
+      descriptionKey: 'longdao.nav.backupDescription'
+    }
+  },
+  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),
@@ -435,7 +519,7 @@ router.beforeEach((to, _from, next) => {
     const menuItem = publicItems.find((item) => item.id === id)
       ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
+      const siteName = appStore.siteName || '龙道 AI'
       document.title = `${menuItem.label} - ${siteName}`
     } else {
       document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)

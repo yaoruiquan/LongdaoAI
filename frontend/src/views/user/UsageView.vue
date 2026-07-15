@@ -52,15 +52,14 @@
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('usage.totalCost') }}
+                {{ t('usage.rmbBilledAmount') }}
               </p>
-              <p class="text-xl font-bold text-green-600 dark:text-green-400">
-                ${{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
+              <p class="text-xl font-bold text-primary-600 dark:text-primary-400">
+                ¥{{ (usageStats?.total_actual_cost || 0).toFixed(4) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.actualCost') }} /
-                <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
-                {{ t('usage.standardCost') }}
+                {{ t('usage.usdSourceCost') }}
+                <span class="font-medium">${{ (usageStats?.total_cost || 0).toFixed(4) }}</span>
               </p>
             </div>
           </div>
@@ -264,8 +263,8 @@
 
           <template #cell-cost="{ row }">
             <div class="flex items-center gap-1.5 text-sm">
-              <span class="font-medium text-green-600 dark:text-green-400">
-                ${{ row.actual_cost.toFixed(6) }}
+              <span class="font-medium text-primary-600 dark:text-primary-400">
+                ¥{{ row.actual_cost.toFixed(6) }}
               </span>
               <!-- Cost Detail Tooltip -->
               <div
@@ -461,13 +460,13 @@
             >
           </div>
           <div class="flex items-center justify-between gap-6">
-            <span class="text-gray-400">{{ t('usage.original') }}</span>
+            <span class="text-gray-400">{{ t('usage.usdSourceCost') }}</span>
             <span class="font-medium text-white">${{ tooltipData?.total_cost.toFixed(6) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
-            <span class="text-gray-400">{{ t('usage.billed') }}</span>
-            <span class="font-semibold text-green-400"
-              >${{ tooltipData?.actual_cost.toFixed(6) }}</span
+            <span class="text-gray-400">{{ t('usage.rmbBilledAmount') }}</span>
+            <span class="font-semibold text-primary-400"
+              >¥{{ tooltipData?.actual_cost.toFixed(6) }}</span
             >
           </div>
         </div>
@@ -809,8 +808,8 @@ const exportToCSV = async () => {
       'Cache Read Tokens',
       'Cache Creation Tokens',
       'Rate Multiplier',
-      'Billed Cost',
-      'Original Cost',
+      'Billed Amount (CNY)',
+      'Source Cost (USD)',
       'First Token (ms)',
       'Duration (ms)'
     ]

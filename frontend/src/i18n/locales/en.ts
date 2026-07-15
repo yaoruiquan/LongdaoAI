@@ -1,6 +1,109 @@
 export default {
   // Home Page
   home: {
+    brandSubtitle: 'Enterprise AI API',
+    register: 'Register',
+    heroEyebrow: 'Longdao Group · Enterprise AI API Platform',
+    heroTitle: 'Stable access to global AI capabilities',
+    primaryCta: 'Create account',
+    secondaryCta: 'View integration',
+    nav: {
+      capabilities: 'Capabilities',
+      models: 'Models',
+      billing: 'Billing'
+    },
+    metrics: {
+      compatibleValue: 'OpenAI',
+      compatibleLabel: 'Compatible API',
+      billingValue: '¥ / $',
+      billingLabel: 'RMB billing, USD reference',
+      securityValue: 'Audit',
+      securityLabel: 'Keys and usage traceable'
+    },
+    capabilities: {
+      kicker: 'Platform Capabilities',
+      title: 'Unified access, stable routing, transparent metering, secure control',
+      unified: {
+        title: 'Unified Access',
+        description: 'Access multiple AI capability categories through compatible APIs and reduce account and key management overhead.'
+      },
+      routing: {
+        title: 'Stable Routing',
+        description: 'Route requests around availability, quota, and policy to keep redundancy for business integrations.'
+      },
+      metering: {
+        title: 'Transparent Metering',
+        description: 'Present usage, cost, and quota relationships clearly, with RMB billing and USD source-cost reference.'
+      },
+      security: {
+        title: 'Secure Control',
+        description: 'Use API keys, permission isolation, and audit logs to help teams consume AI capabilities safely.'
+      }
+    },
+    models: {
+      kicker: 'Supported Models',
+      title: 'Model categories shown by compatibility',
+      description: 'The homepage describes planned model categories and compatibility only, without promising unverified provider availability.',
+      openai: {
+        title: 'OpenAI-compatible models',
+        description: 'Adapt common call patterns such as Chat Completions.'
+      },
+      claude: {
+        title: 'Claude-style models',
+        description: 'Support common enterprise text, code, and reasoning scenarios.'
+      },
+      gemini: {
+        title: 'Gemini-style models',
+        description: 'Reserve expansion paths for multimodal and long-context use cases.'
+      },
+      compatible: {
+        title: 'More compatible upstreams',
+        description: 'Manage future channels with one key and one usage view.'
+      }
+    },
+    integration: {
+      kicker: 'Integration Steps',
+      title: 'Connect APIs in three steps',
+      createKey: {
+        title: 'Create an API Key',
+        description: 'Sign in to the console, create keys, and manage permissions and quotas by team, project, or purpose.'
+      },
+      replaceBaseUrl: {
+        title: 'Replace Base URL',
+        description: 'Update the base URL in existing OpenAI or compatible SDKs without hardcoding production domains in the frontend.'
+      },
+      sendRequest: {
+        title: 'Send requests and review usage',
+        description: 'Call APIs with Bearer auth and review spending, cost, and quota status in the console.'
+      }
+    },
+    billing: {
+      kicker: 'Billing Advantages',
+      title: 'Clear, honest, auditable cost presentation',
+      description: 'This phase only explains target rules and does not fake payment success, balance changes, or orders.',
+      rule: 'Target rule: subscription quota is consumed first; balance is used after quota is exhausted. Backend billing behavior ships in a later phase.',
+      rmb: {
+        title: 'RMB settlement',
+        description: 'User-facing amounts prioritize RMB, while USD remains source-cost or reference cost.'
+      },
+      transparent: {
+        title: 'Transparent details',
+        description: 'Usage and spending pages keep request, token, model, and cost dimensions visible.'
+      },
+      packageFirst: {
+        title: 'Package first',
+        description: 'Clearly explain the consumption order between package quota and balance.'
+      },
+      support: {
+        title: 'Service assurance',
+        description: 'Express enterprise readiness through stability, permission isolation, audit logs, and support.'
+      }
+    },
+    finalCta: {
+      title: 'Ready to connect AI to your business?',
+      description: 'Enter the Longdao AI console to create keys, view packages, and track usage for phased enterprise integration.',
+      button: 'Register now'
+    },
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',
@@ -12,7 +115,7 @@ export default {
     goToDashboard: 'Go to Dashboard',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    heroDescription: 'Longdao Group provides developers and enterprises with secure, stable AI API access and transparent billing.',
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Session Persistence',
@@ -107,6 +210,186 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    }
+  },
+
+  longdao: {
+    ai: 'AI',
+    nav: {
+      workbench: 'Workbench',
+      apiServices: 'API Services',
+      usageAndBilling: 'Usage & Spending',
+      fundsAndPlans: 'Funds & Plans',
+      planCenter: 'Plan Center',
+      balanceRecharge: 'Balance Recharge',
+      orderRecords: 'Order Records',
+      redeemCode: 'Redeem Code',
+      accountSecurity: 'Account Security',
+      accountSettings: 'Account Settings',
+      moreServices: 'More Services',
+      userWorkbench: 'User Workbench',
+      operationsOverview: 'Operations Overview',
+      adminOverview: 'Admin Overview',
+      usersAndBenefits: 'Users & Entitlements',
+      resourcesAndChannels: 'Resources & Channels',
+      channelAccounts: 'Channel Accounts',
+      finance: 'Finance',
+      usageLedger: 'Usage Ledger',
+      paymentOrders: 'Payment Orders',
+      fundTransactions: 'Fund Transactions',
+      riskAndSystem: 'Risk & System',
+      riskEvents: 'Risk Events',
+      dataManagement: 'Data Management',
+      dataManagementDescription: 'Manage system data, migrations, and maintenance tasks',
+      backup: 'Backup & Restore',
+      backupDescription: 'Manage database backup and restore operations'
+    },
+    dashboard: {
+      badge: 'Enterprise Workbench',
+      welcome: 'Welcome back',
+      developer: 'Developer',
+      description: 'Manage API keys, plan quota, balance, and request usage in one place.',
+      createKey: 'Create API Key',
+      viewPlans: 'View Plans',
+      billingRuleTitle: 'Target Billing Priority',
+      billingRuleDescription: 'Plan quota is consumed first, then account balance. This is a target rule only; backend billing logic will be implemented in a later phase.',
+      loadFailed: 'Failed to load workbench data. Please retry.',
+      planCenter: 'Plan Center',
+      planCenterDesc: 'Review available plans and subscriptions',
+      balanceRecharge: 'Balance Recharge',
+      balanceRechargeDesc: 'Review balance and payment integration status'
+    },
+    apiGuide: {
+      badge: 'Quick Start',
+      title: 'Use a Longdao AI API Key',
+      description: 'Connect through the unified Base URL with a compatible SDK or cURL and Bearer authentication.',
+      copy: 'Copy',
+      authHint: 'Use Authorization: Bearer YOUR_LONGDAO_API_KEY in request headers.',
+      tabsLabel: 'API integration examples',
+      copyCode: 'Copy code',
+      serverOnly: 'Server-side only',
+      serverOnlyDesc: 'Never expose API keys in browsers, mobile bundles, or public repositories.',
+      rotateKeys: 'Rotate keys',
+      rotateKeysDesc: 'Separate keys by project and disable any key immediately if it may be exposed.',
+      leastPrivilege: 'Least privilege',
+      leastPrivilegeDesc: 'Use separate limits, expiration dates, and access scopes for each workload.',
+      copied: 'Copied to clipboard'
+    },
+    plans: {
+      badge: 'Funds & Plans',
+      title: 'Longdao AI Plan Center',
+      description: 'Review plan capabilities, active subscriptions, and target billing rules. Real checkout opens only after payment integration.',
+      balance: 'Current Balance',
+      goRecharge: 'Go to Recharge',
+      billingPriority: 'Plan quota is consumed first; account balance is used after quota is exhausted.',
+      paymentPendingTitle: 'Payment integration in progress',
+      paymentPendingDescription: 'No payment order, charge, or balance change will be created. Plan buttons only preview the product structure.',
+      availablePlans: 'Available Plans',
+      availablePlansDesc: 'These are frontend plan previews. Pricing, quota, and entitlements will be configured by operations.',
+      frontendPreview: 'Plan Preview',
+      recommended: 'Recommended',
+      price: 'Plan Price',
+      configuredByOperations: 'Configured by operations',
+      paymentConnecting: 'Payment integration pending',
+      currentSubscriptions: 'Current Subscriptions',
+      currentSubscriptionsDesc: 'Displays real subscription data already associated with this account.',
+      viewDetails: 'View subscription details',
+      unnamedPlan: 'Unnamed plan',
+      subscriptionActive: 'Subscription active',
+      monthlyQuota: 'Monthly quota (USD source quota)',
+      multiplier: 'Billing multiplier',
+      noSubscription: 'No active subscription',
+      noSubscriptionDesc: 'Real plan purchases will become available after payment backend integration.',
+      unlimitedOrConfigured: 'Unlimited or operations-configured',
+      viewPlanCenter: 'View Plan Center',
+      starter: {
+        title: 'Starter',
+        description: 'For individual developers and small validation projects.',
+        feature1: 'Unified API key management',
+        feature2: 'Basic usage and spending records',
+        feature3: 'Standard integration support'
+      },
+      professional: {
+        title: 'Professional',
+        description: 'For production products and development teams.',
+        feature1: 'Higher quota and concurrency configuration',
+        feature2: 'Team-oriented key and usage management',
+        feature3: 'Priority technical support'
+      },
+      enterprise: {
+        title: 'Enterprise',
+        description: 'For organizations requiring governance, auditability, and dedicated service.',
+        feature1: 'Enterprise access control and auditing',
+        feature2: 'Dedicated quota and channel strategies',
+        feature3: 'Business and technical service support'
+      }
+    },
+    finance: {
+      recharge: {
+        badge: 'Finance Center',
+        title: 'Balance Recharge',
+        description: 'Review the RMB ledger balance and payment integration status. Real recharge opens after backend integration.',
+        currentBalance: 'Current Ledger Balance',
+        balanceHint: 'Only existing account data is displayed; this page cannot change the balance.',
+        accountStatus: 'Payment Status',
+        notConnected: 'Payment integration in progress',
+        currency: 'Ledger Currency',
+        amountTitle: 'Select Recharge Amount',
+        customAmount: 'Custom Amount',
+        customAmountPlaceholder: 'Enter an RMB amount',
+        paymentMethodTitle: 'Payment Method',
+        paymentMethodPending: 'Channel not connected',
+        integrationNotice: 'Payment integration is in progress. No order, charge, or balance change will be created.',
+        disabledButton: 'Recharge unavailable until payment integration',
+        paymentMethods: {
+          card: 'Bank Card',
+          wallet: 'Enterprise Digital Wallet'
+        }
+      },
+      orders: {
+        badge: 'Finance Center',
+        title: 'Order Records',
+        description: 'Real order status and payment records will appear here after payment backend integration.',
+        emptyTitle: 'No real orders',
+        emptyDescription: 'The payment system is not connected, so there are no real orders to display and no mock orders are generated.'
+      }
+    },
+    adminConstruction: {
+      badge: 'Under Construction',
+      futureCapabilities: 'Planned Capabilities',
+      statusTitle: 'Current Status',
+      statusDescription: 'The page structure is ready. Backend APIs, permissions, and data models will be connected in the relevant phase.',
+      disabledNotice: 'This is a read-only construction state with no actions that create business data.',
+      paymentOrders: {
+        title: 'Payment Order Management',
+        description: 'Will support real payment-order search, reconciliation, refunds, and exports.',
+        capabilities: {
+          search: 'Order search and status filters',
+          reconciliation: 'Payment-channel reconciliation',
+          refunds: 'Refund and exception handling',
+          export: 'Finance record exports'
+        }
+      },
+      fundTransactions: {
+        title: 'Fund Transactions',
+        description: 'Will record balance credits, deductions, adjustments, and audit history.',
+        capabilities: {
+          ledger: 'User fund ledger',
+          adjustments: 'Manual adjustments and approvals',
+          auditTrail: 'Tamper-evident audit trail',
+          export: 'Transaction export and reconciliation'
+        }
+      },
+      riskEvents: {
+        title: 'Risk Events',
+        description: 'Will aggregate anomalous requests, account behavior, and risk-control actions.',
+        capabilities: {
+          rules: 'Risk rules and trigger reasons',
+          alerts: 'Real-time alerts and notifications',
+          reviewQueue: 'Manual review queue',
+          reporting: 'Risk trends and reports'
+        }
+      }
     }
   },
 
@@ -244,6 +527,7 @@ export default {
 
   // Common
   common: {
+    copyrightOwner: 'Longdao Group',
     loading: 'Loading...',
     justNow: 'just now',
     save: 'Save',
@@ -357,6 +641,21 @@ export default {
 
   // Auth
   auth: {
+    brandEyebrow: 'Longdao Group',
+    platformTagline: 'Enterprise AI API Platform',
+    panelTitle: 'Use one key to access global AI capabilities reliably',
+    panelDescription: 'Longdao Group provides developers and enterprises with secure, stable, transparently billed AI API access so teams can manage models, quota, and cost with auditability.',
+    billingPrincipleTitle: 'Billing rule note',
+    billingPrincipleDesc: 'Subscription quota is consumed first, then balance after quota is exhausted; payment and finance capabilities arrive in later phases.',
+    loginEyebrow: 'Secure sign in',
+    registerEyebrow: 'Create account',
+    securityNote: 'Keep your account and API keys safe. Do not expose secrets in browser code or public repositories.',
+    registerNote: 'Registration continues to follow public settings: email verification, invitation code, promo code, and Turnstile appear only when enabled by the backend.',
+    metrics: {
+      compatible: 'Compatible access',
+      routing: 'Stable routing',
+      billing: 'Transparent billing'
+    },
     welcomeBack: 'Welcome Back',
     signInToAccount: 'Sign in to your account to continue',
     signIn: 'Sign In',
@@ -696,6 +995,8 @@ export default {
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
+    rmbBilledAmount: 'RMB Ledger Spending',
+    usdSourceCost: 'USD Source-Cost Reference',
     costDetails: 'Cost Breakdown',
     tokenDetails: 'Token Breakdown',
     cacheTtlOverriddenHint: 'Cache TTL Override enabled',

@@ -10,7 +10,7 @@
     <div class="sidebar-header">
       <!-- Custom Logo or Default Logo -->
       <div class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
-        <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+        <img :src="siteLogo || '/longdao-logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <transition name="fade">
         <div v-if="!sidebarCollapsed" class="flex flex-col">
@@ -25,12 +25,14 @@
 
     <!-- Navigation -->
     <nav class="sidebar-nav scrollbar-hide">
-      <!-- Admin View: Admin menu first, then personal menu -->
+      <!-- Admin View: grouped administration menu, followed by personal access -->
       <template v-if="isAdmin">
-        <!-- Admin Section -->
-        <div class="sidebar-section">
+        <div v-for="group in adminNavGroups" :key="group.label" class="sidebar-section">
+          <div v-if="!sidebarCollapsed" class="sidebar-section-title">{{ group.label }}</div>
+          <div v-else class="mx-3 my-3 h-px bg-gray-200 dark:bg-dark-700"></div>
+
           <router-link
-            v-for="item in adminNavItems"
+            v-for="item in group.items"
             :key="item.path"
             :to="item.path"
             class="sidebar-link mb-1"
@@ -47,7 +49,11 @@
             "
             @click="handleMenuItemClick(item.path)"
           >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+            <span
+              v-if="item.iconSvg"
+              class="sidebar-svg-icon h-5 w-5 flex-shrink-0"
+              v-html="sanitizeSvg(item.iconSvg)"
+            ></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label }}</span>
@@ -55,7 +61,6 @@
           </router-link>
         </div>
 
-        <!-- Personal Section for Admin (hidden in simple mode) -->
         <div v-if="!authStore.isSimpleMode" class="sidebar-section">
           <div v-if="!sidebarCollapsed" class="sidebar-section-title">
             {{ t('nav.myAccount') }}
@@ -72,7 +77,11 @@
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+            <span
+              v-if="item.iconSvg"
+              class="sidebar-svg-icon h-5 w-5 flex-shrink-0"
+              v-html="sanitizeSvg(item.iconSvg)"
+            ></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label }}</span>
@@ -83,9 +92,12 @@
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
-        <div class="sidebar-section">
+        <div v-for="group in userNavGroups" :key="group.label" class="sidebar-section">
+          <div v-if="!sidebarCollapsed" class="sidebar-section-title">{{ group.label }}</div>
+          <div v-else class="mx-3 my-3 h-px bg-gray-200 dark:bg-dark-700"></div>
+
           <router-link
-            v-for="item in userNavItems"
+            v-for="item in group.items"
             :key="item.path"
             :to="item.path"
             class="sidebar-link mb-1"
@@ -94,7 +106,11 @@
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+            <span
+              v-if="item.iconSvg"
+              class="sidebar-svg-icon h-5 w-5 flex-shrink-0"
+              v-html="sanitizeSvg(item.iconSvg)"
+            ></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label }}</span>
@@ -154,6 +170,11 @@ import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } 
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
 interface NavItem {
   path: string
   label: string
@@ -179,7 +200,6 @@ const isDark = ref(document.documentElement.classList.contains('dark'))
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
-const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -482,69 +502,6 @@ const ChevronDoubleRightIcon = {
     )
 }
 
-// User navigation items (for regular users)
-const userNavItems = computed((): NavItem[] => {
-  const items: NavItem[] = [
-    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.sora_client_enabled
-      ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
-      : []),
-    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
-      ? [
-          {
-            path: '/purchase',
-            label: t('nav.buySubscription'),
-            icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true
-          }
-        ]
-      : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
-  ]
-  return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
-})
-
-// Personal navigation items (for admin's "My Account" section, without Dashboard)
-const personalNavItems = computed((): NavItem[] => {
-  const items: NavItem[] = [
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.sora_client_enabled
-      ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
-      : []),
-    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
-      ? [
-          {
-            path: '/purchase',
-            label: t('nav.buySubscription'),
-            icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true
-          }
-        ]
-      : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
-  ]
-  return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
-})
-
 // Custom menu items filtered by visibility
 const customMenuItemsForUser = computed(() => {
   const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
@@ -559,42 +516,134 @@ const customMenuItemsForAdmin = computed(() => {
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 
-// Admin navigation items
-const adminNavItems = computed((): NavItem[] => {
-  const baseItems: NavItem[] = [
-    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    ...(adminSettingsStore.opsMonitoringEnabled
-      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon }]
-      : []),
-    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
-    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
-    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+function visibleItems(items: NavItem[]): NavItem[] {
+  return authStore.isSimpleMode ? items.filter((item) => !item.hideInSimpleMode) : items
+}
+
+// User navigation groups
+const userNavGroups = computed((): NavGroup[] => {
+  const groups: NavGroup[] = [
+    {
+      label: t('longdao.nav.workbench'),
+      items: [{ path: '/dashboard', label: t('longdao.nav.workbench'), icon: DashboardIcon }]
+    },
+    {
+      label: t('longdao.nav.apiServices'),
+      items: visibleItems([
+        { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+        { path: '/usage', label: t('longdao.nav.usageAndBilling'), icon: ChartIcon, hideInSimpleMode: true },
+        ...(appStore.cachedPublicSettings?.sora_client_enabled
+          ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
+          : [])
+      ])
+    },
+    {
+      label: t('longdao.nav.fundsAndPlans'),
+      items: visibleItems([
+        { path: '/purchase', label: t('longdao.nav.planCenter'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true },
+        { path: '/recharge', label: t('longdao.nav.balanceRecharge'), icon: CreditCardIcon, hideInSimpleMode: true },
+        { path: '/orders', label: t('longdao.nav.orderRecords'), icon: TicketIcon, hideInSimpleMode: true },
+        { path: '/redeem', label: t('longdao.nav.redeemCode'), icon: GiftIcon, hideInSimpleMode: true }
+      ])
+    },
+    {
+      label: t('longdao.nav.accountSecurity'),
+      items: [{ path: '/profile', label: t('longdao.nav.accountSettings'), icon: UserIcon }]
+    }
   ]
 
-  // 简单模式下，在系统设置前插入 API密钥
-  if (authStore.isSimpleMode) {
-    const filtered = baseItems.filter(item => !item.hideInSimpleMode)
-    filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
-    filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-    // Add admin custom menu items after settings
-    for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
-    }
-    return filtered
+  if (customMenuItemsForUser.value.length) {
+    groups.push({
+      label: t('longdao.nav.moreServices'),
+      items: customMenuItemsForUser.value.map((item): NavItem => ({
+        path: `/custom/${item.id}`,
+        label: item.label,
+        icon: null,
+        iconSvg: item.icon_svg
+      }))
+    })
   }
 
-  baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-  // Add admin custom menu items after settings
-  for (const cm of customMenuItemsForAdmin.value) {
-    baseItems.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+  return groups.filter((group) => group.items.length > 0)
+})
+
+// Personal navigation items for administrators
+const personalNavItems = computed((): NavItem[] => visibleItems([
+  { path: '/dashboard', label: t('longdao.nav.userWorkbench'), icon: DashboardIcon },
+  { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+  { path: '/usage', label: t('longdao.nav.usageAndBilling'), icon: ChartIcon, hideInSimpleMode: true },
+  { path: '/profile', label: t('longdao.nav.accountSettings'), icon: UserIcon }
+]))
+
+// Administrator navigation groups
+const adminNavGroups = computed((): NavGroup[] => {
+  const groups: NavGroup[] = [
+    {
+      label: t('longdao.nav.operationsOverview'),
+      items: visibleItems([
+        { path: '/admin/dashboard', label: t('longdao.nav.adminOverview'), icon: DashboardIcon },
+        ...(adminSettingsStore.opsMonitoringEnabled
+          ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon }]
+          : []),
+        { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon }
+      ])
+    },
+    {
+      label: t('longdao.nav.usersAndBenefits'),
+      items: visibleItems([
+        { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
+        { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+        { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
+        { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
+        { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true }
+      ])
+    },
+    {
+      label: t('longdao.nav.resourcesAndChannels'),
+      items: [
+        { path: '/admin/accounts', label: t('longdao.nav.channelAccounts'), icon: GlobeIcon },
+        { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon }
+      ]
+    },
+    {
+      label: t('longdao.nav.finance'),
+      items: visibleItems([
+        { path: '/admin/usage', label: t('longdao.nav.usageLedger'), icon: ChartIcon },
+        { path: '/admin/payment-orders', label: t('longdao.nav.paymentOrders'), icon: CreditCardIcon, hideInSimpleMode: true },
+        { path: '/admin/fund-transactions', label: t('longdao.nav.fundTransactions'), icon: TicketIcon, hideInSimpleMode: true }
+      ])
+    },
+    {
+      label: t('longdao.nav.riskAndSystem'),
+      items: visibleItems([
+        { path: '/admin/risk-events', label: t('longdao.nav.riskEvents'), icon: BellIcon, hideInSimpleMode: true },
+        { path: '/admin/data-management', label: t('longdao.nav.dataManagement'), icon: ServerIcon, hideInSimpleMode: true },
+        { path: '/admin/backup', label: t('longdao.nav.backup'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true },
+        { path: '/admin/settings', label: t('nav.settings'), icon: CogIcon }
+      ])
+    }
+  ]
+
+  if (authStore.isSimpleMode) {
+    groups.push({
+      label: t('nav.myAccount'),
+      items: [{ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon }]
+    })
   }
-  return baseItems
+
+  if (customMenuItemsForAdmin.value.length) {
+    groups.push({
+      label: t('longdao.nav.moreServices'),
+      items: customMenuItemsForAdmin.value.map((item): NavItem => ({
+        path: `/custom/${item.id}`,
+        label: item.label,
+        icon: null,
+        iconSvg: item.icon_svg
+      }))
+    })
+  }
+
+  return groups.filter((group) => group.items.length > 0)
 })
 
 function toggleSidebar() {

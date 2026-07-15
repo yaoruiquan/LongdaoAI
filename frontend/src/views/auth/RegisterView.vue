@@ -1,41 +1,32 @@
 <template>
   <AuthLayout>
     <div class="space-y-6">
-      <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">
+          {{ t('auth.registerEyebrow') }}
+        </p>
+        <h2 class="mt-3 text-3xl font-semibold tracking-tight text-gray-950 dark:text-white">
           {{ t('auth.createAccount') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-dark-400">
           {{ t('auth.signUpToStart', { siteName }) }}
         </p>
       </div>
 
-      <!-- LinuxDo Connect OAuth 登录 -->
       <LinuxDoOAuthSection v-if="linuxdoOAuthEnabled" :disabled="isLoading" />
 
-      <!-- Registration Disabled Message -->
-      <div
-        v-if="!registrationEnabled && settingsLoaded"
-        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex-shrink-0">
-            <Icon name="exclamationCircle" size="md" class="text-amber-500" />
+      <transition name="fade">
+        <div v-if="!registrationEnabled && settingsLoaded" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
+          <div class="flex items-start gap-3">
+            <Icon name="exclamationCircle" size="md" class="mt-0.5 shrink-0 text-amber-500" />
+            <p class="text-sm leading-6 text-amber-700 dark:text-amber-300">{{ t('auth.registrationDisabled') }}</p>
           </div>
-          <p class="text-sm text-amber-700 dark:text-amber-400">
-            {{ t('auth.registrationDisabled') }}
-          </p>
         </div>
-      </div>
+      </transition>
 
-      <!-- Registration Form -->
-      <form v-else @submit.prevent="handleRegister" class="space-y-5">
-        <!-- Email Input -->
+      <form v-if="registrationEnabled || !settingsLoaded" @submit.prevent="handleRegister" class="space-y-5">
         <div>
-          <label for="email" class="input-label">
-            {{ t('auth.emailLabel') }}
-          </label>
+          <label for="email" class="input-label">{{ t('auth.emailLabel') }}</label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
               <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
@@ -47,22 +38,17 @@
               required
               autofocus
               autocomplete="email"
-              :disabled="isLoading"
+              :disabled="isLoading || !registrationEnabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
-          <p v-if="errors.email" class="input-error-text">
-            {{ errors.email }}
-          </p>
+          <p v-if="errors.email" class="input-error-text">{{ errors.email }}</p>
         </div>
 
-        <!-- Password Input -->
         <div>
-          <label for="password" class="input-label">
-            {{ t('auth.passwordLabel') }}
-          </label>
+          <label for="password" class="input-label">{{ t('auth.passwordLabel') }}</label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
               <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
@@ -73,7 +59,7 @@
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="new-password"
-              :disabled="isLoading"
+              :disabled="isLoading || !registrationEnabled"
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.createPasswordPlaceholder')"
@@ -87,120 +73,59 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p v-if="errors.password" class="input-error-text">
-            {{ errors.password }}
-          </p>
-          <p v-else class="input-hint">
-            {{ t('auth.passwordHint') }}
-          </p>
+          <p v-if="errors.password" class="input-error-text">{{ errors.password }}</p>
+          <p v-else class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('auth.passwordHint') }}</p>
         </div>
 
-        <!-- Invitation Code Input (Required when enabled) -->
         <div v-if="invitationCodeEnabled">
-          <label for="invitation_code" class="input-label">
-            {{ t('auth.invitationCodeLabel') }}
-          </label>
+          <label for="invitation_code" class="input-label">{{ t('auth.invitationCodeLabel') }}</label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="key" size="md" :class="invitationValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="badge" size="md" class="text-gray-400 dark:text-dark-500" />
             </div>
             <input
               id="invitation_code"
               v-model="formData.invitation_code"
               type="text"
-              :disabled="isLoading"
-              class="input pl-11 pr-10"
-              :class="{
-                'border-green-500 focus:border-green-500 focus:ring-green-500': invitationValidation.valid,
-                'border-red-500 focus:border-red-500 focus:ring-red-500': invitationValidation.invalid || errors.invitation_code
-              }"
+              :disabled="isLoading || !registrationEnabled"
+              class="input pl-11"
+              :class="{ 'input-error': errors.invitation_code || invitationValidation.invalid }"
               :placeholder="t('auth.invitationCodePlaceholder')"
               @input="handleInvitationCodeInput"
             />
-            <!-- Validation indicator -->
-            <div v-if="invitationValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <svg class="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            </div>
-            <div v-else-if="invitationValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <Icon name="checkCircle" size="md" class="text-green-500" />
-            </div>
-            <div v-else-if="invitationValidation.invalid || errors.invitation_code" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <Icon name="exclamationCircle" size="md" class="text-red-500" />
-            </div>
           </div>
-          <!-- Invitation code validation result -->
-          <transition name="fade">
-            <div v-if="invitationValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
-              <Icon name="checkCircle" size="sm" class="text-green-600 dark:text-green-400" />
-              <span class="text-sm text-green-700 dark:text-green-400">
-                {{ t('auth.invitationCodeValid') }}
-              </span>
-            </div>
-            <p v-else-if="invitationValidation.invalid" class="input-error-text">
-              {{ invitationValidation.message }}
-            </p>
-            <p v-else-if="errors.invitation_code" class="input-error-text">
-              {{ errors.invitation_code }}
-            </p>
-          </transition>
+          <p v-if="errors.invitation_code" class="input-error-text">{{ errors.invitation_code }}</p>
+          <p v-else-if="invitationValidating" class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('auth.invitationCodeValidating') }}</p>
+          <p v-else-if="invitationValidation.valid" class="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">{{ t('auth.invitationCodeValid') }}</p>
+          <p v-else-if="invitationValidation.invalid" class="input-error-text">{{ invitationValidation.message || t('auth.invitationCodeInvalid') }}</p>
         </div>
 
-        <!-- Promo Code Input (Optional) -->
         <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
             {{ t('auth.promoCodeLabel') }}
-            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+            <span class="font-normal text-gray-400">({{ t('common.optional') }})</span>
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="gift" size="md" class="text-gray-400 dark:text-dark-500" />
             </div>
             <input
               id="promo_code"
               v-model="formData.promo_code"
               type="text"
-              :disabled="isLoading"
-              class="input pl-11 pr-10"
-              :class="{
-                'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
-                'border-red-500 focus:border-red-500 focus:ring-red-500': promoValidation.invalid
-              }"
+              :disabled="isLoading || !registrationEnabled"
+              class="input pl-11"
+              :class="{ 'input-error': promoValidation.invalid }"
               :placeholder="t('auth.promoCodePlaceholder')"
               @input="handlePromoCodeInput"
             />
-            <!-- Validation indicator -->
-            <div v-if="promoValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <svg class="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            </div>
-            <div v-else-if="promoValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <Icon name="checkCircle" size="md" class="text-green-500" />
-            </div>
-            <div v-else-if="promoValidation.invalid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
-              <Icon name="exclamationCircle" size="md" class="text-red-500" />
-            </div>
           </div>
-          <!-- Promo code validation result -->
-          <transition name="fade">
-            <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
-              <Icon name="gift" size="sm" class="text-green-600 dark:text-green-400" />
-              <span class="text-sm text-green-700 dark:text-green-400">
-                {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
-              </span>
-            </div>
-            <p v-else-if="promoValidation.invalid" class="input-error-text">
-              {{ promoValidation.message }}
-            </p>
-          </transition>
+          <p v-if="promoValidating" class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('auth.promoCodeValidating') }}</p>
+          <p v-else-if="promoValidation.valid" class="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">{{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}</p>
+          <p v-else-if="promoValidation.invalid" class="input-error-text">{{ promoValidation.message || t('auth.promoCodeInvalid') }}</p>
         </div>
 
-        <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
+        <div v-if="turnstileEnabled && turnstileSiteKey" class="rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
@@ -208,77 +133,41 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
-          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
-            {{ errors.turnstile }}
-          </p>
+          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">{{ errors.turnstile }}</p>
         </div>
 
-        <!-- Error Message -->
         <transition name="fade">
-          <div
-            v-if="errorMessage"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
-          >
+          <div v-if="errorMessage" class="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
             <div class="flex items-start gap-3">
-              <div class="flex-shrink-0">
-                <Icon name="exclamationCircle" size="md" class="text-red-500" />
-              </div>
-              <p class="text-sm text-red-700 dark:text-red-400">
-                {{ errorMessage }}
-              </p>
+              <Icon name="exclamationCircle" size="md" class="mt-0.5 shrink-0 text-red-500" />
+              <p class="text-sm leading-6 text-red-700 dark:text-red-300">{{ errorMessage }}</p>
             </div>
           </div>
         </transition>
 
-        <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          :disabled="isLoading || !registrationEnabled || (turnstileEnabled && !turnstileToken)"
+          class="btn btn-primary btn-lg w-full"
         >
-          <svg
-            v-if="isLoading"
-            class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
+          <svg v-if="isLoading" class="-ml-1 mr-2 h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
-          <Icon v-else name="userPlus" size="md" class="mr-2" />
-          {{
-            isLoading
-              ? t('auth.processing')
-              : emailVerifyEnabled
-                ? t('auth.continue')
-                : t('auth.createAccount')
-          }}
+          {{ isLoading ? t('auth.processing') : emailVerifyEnabled ? t('auth.continue') : t('auth.createAccount') }}
         </button>
       </form>
+
+      <div class="rounded-2xl border border-primary-500/15 bg-primary-50/80 p-4 text-sm leading-6 text-primary-900 dark:border-primary-300/20 dark:bg-primary-500/10 dark:text-primary-100">
+        {{ t('auth.registerNote') }}
+      </div>
     </div>
 
-    <!-- Footer -->
     <template #footer>
-      <p class="text-gray-500 dark:text-dark-400">
-        {{ t('auth.alreadyHaveAccount') }}
-        <router-link
-          to="/login"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
-        >
-          {{ t('auth.signIn') }}
-        </router-link>
-      </p>
+      <span class="text-gray-500 dark:text-dark-400">{{ t('auth.alreadyHaveAccount') }}</span>
+      <router-link to="/login" class="ml-1 font-semibold text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
+        {{ t('auth.signIn') }}
+      </router-link>
     </template>
   </AuthLayout>
 </template>
@@ -322,7 +211,7 @@ const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('Sub2API')
+const siteName = ref<string>('龙道 AI')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 
@@ -374,7 +263,7 @@ onMounted(async () => {
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
+    siteName.value = settings.site_name || '龙道 AI'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []

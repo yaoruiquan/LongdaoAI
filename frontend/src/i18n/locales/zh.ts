@@ -1,6 +1,109 @@
 export default {
   // Home Page
   home: {
+    brandSubtitle: '企业级 AI API',
+    register: '注册',
+    heroEyebrow: '龙道集团 · 企业级 AI API 服务平台',
+    heroTitle: '稳定连接全球 AI 能力',
+    primaryCta: '创建账号',
+    secondaryCta: '查看接入方式',
+    nav: {
+      capabilities: '产品能力',
+      models: '支持模型',
+      billing: '计费优势'
+    },
+    metrics: {
+      compatibleValue: 'OpenAI',
+      compatibleLabel: '兼容接口',
+      billingValue: '¥ / $',
+      billingLabel: '人民币结算，美元参考',
+      securityValue: '审计',
+      securityLabel: '密钥与用量可追踪'
+    },
+    capabilities: {
+      kicker: '平台能力',
+      title: '统一接入、稳定路由、透明计量、安全控制',
+      unified: {
+        title: '统一接入',
+        description: '以兼容 API 方式接入多类 AI 能力，减少多平台账号与密钥管理成本。'
+      },
+      routing: {
+        title: '稳定路由',
+        description: '围绕可用性、额度和策略进行请求调度，为业务接入保留稳定冗余。'
+      },
+      metering: {
+        title: '透明计量',
+        description: '用量、费用与额度关系清晰展示，支持按人民币结算并保留美元源成本参考。'
+      },
+      security: {
+        title: '安全控制',
+        description: '通过 API Key、权限隔离和日志审计，帮助团队安全地使用 AI 能力。'
+      }
+    },
+    models: {
+      kicker: '支持模型',
+      title: '面向兼容能力展示模型类别',
+      description: '首页仅展示平台计划支持的模型类别和兼容能力，不承诺未经验证的供应商可用性。',
+      openai: {
+        title: 'OpenAI 兼容模型',
+        description: '适配 Chat Completions 等常见调用模式。'
+      },
+      claude: {
+        title: 'Claude 类模型',
+        description: '支持企业常用文本、代码和推理场景。'
+      },
+      gemini: {
+        title: 'Gemini 类模型',
+        description: '为多模态与长上下文场景保留接入扩展。'
+      },
+      compatible: {
+        title: '更多兼容上游',
+        description: '通过统一密钥与统一用量视图管理后续渠道。'
+      }
+    },
+    integration: {
+      kicker: '集成步骤',
+      title: '三步完成 API 接入',
+      createKey: {
+        title: '创建 API Key',
+        description: '登录控制台创建密钥，并按团队、项目或用途管理权限与额度。'
+      },
+      replaceBaseUrl: {
+        title: '替换 Base URL',
+        description: '在现有 OpenAI 或兼容 SDK 中替换基础地址，不在前端硬编码生产域名。'
+      },
+      sendRequest: {
+        title: '发起请求并查看用量',
+        description: '使用 Bearer 鉴权调用接口，在控制台查看消耗、成本和额度状态。'
+      }
+    },
+    billing: {
+      kicker: '计费优势',
+      title: '清晰、诚实、可审计的费用表达',
+      description: '本阶段仅展示目标规则说明，不伪造支付成功、余额变化或订单数据。',
+      rule: '目标规则：套餐额度优先消耗，额度用尽后使用余额。后端计费规则将在后续阶段实现。',
+      rmb: {
+        title: '人民币结算',
+        description: '面向用户以人民币金额为主展示，美元成本作为源成本或参考。'
+      },
+      transparent: {
+        title: '透明明细',
+        description: '用量与消费页面保留请求、Token、模型和成本维度。'
+      },
+      packageFirst: {
+        title: '套餐优先',
+        description: '清楚说明套餐额度与余额之间的消耗顺序，避免误导。'
+      },
+      support: {
+        title: '服务保障',
+        description: '围绕稳定性、权限隔离、日志审计和技术支持进行企业级表达。'
+      }
+    },
+    finalCta: {
+      title: '准备把 AI 能力接入业务？',
+      description: '进入龙道 AI 控制台创建密钥、查看套餐和用量，按阶段完成企业级接入。',
+      button: '立即注册'
+    },
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
     docs: '文档',
@@ -12,7 +115,7 @@ export default {
     goToDashboard: '进入控制台',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    heroDescription: '龙道集团为开发者与企业提供安全、稳定、透明计费的 AI API 接入服务。',
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '会话保持',
@@ -107,6 +210,186 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    }
+  },
+
+  longdao: {
+    ai: 'AI',
+    nav: {
+      workbench: '工作台',
+      apiServices: 'API 服务',
+      usageAndBilling: '用量与消费',
+      fundsAndPlans: '资金与套餐',
+      planCenter: '套餐中心',
+      balanceRecharge: '余额充值',
+      orderRecords: '订单记录',
+      redeemCode: '兑换码',
+      accountSecurity: '账户安全',
+      accountSettings: '账户设置',
+      moreServices: '更多服务',
+      userWorkbench: '用户工作台',
+      operationsOverview: '运营总览',
+      adminOverview: '管理概览',
+      usersAndBenefits: '用户与权益',
+      resourcesAndChannels: '资源与渠道',
+      channelAccounts: '渠道账户',
+      finance: '财务管理',
+      usageLedger: '用量账单',
+      paymentOrders: '支付订单',
+      fundTransactions: '资金流水',
+      riskAndSystem: '风控与系统',
+      riskEvents: '风险事件',
+      dataManagement: '数据管理',
+      dataManagementDescription: '管理系统数据、迁移与维护任务',
+      backup: '备份与恢复',
+      backupDescription: '管理数据库备份与恢复操作'
+    },
+    dashboard: {
+      badge: '企业工作台',
+      welcome: '欢迎回来',
+      developer: '开发者',
+      description: '统一管理 API Key、套餐额度、余额与调用用量。',
+      createKey: '创建 API Key',
+      viewPlans: '查看套餐',
+      billingRuleTitle: '目标计费顺序',
+      billingRuleDescription: '套餐额度优先消耗，额度用尽后使用账户余额。当前页面仅展示目标规则，后端计费逻辑将在后续阶段接入。',
+      loadFailed: '工作台数据加载失败，请重试。',
+      planCenter: '套餐中心',
+      planCenterDesc: '查看可用套餐和当前订阅',
+      balanceRecharge: '余额充值',
+      balanceRechargeDesc: '查看余额和支付接入状态'
+    },
+    apiGuide: {
+      badge: '快速接入',
+      title: '使用龙道 AI API Key',
+      description: '使用兼容 SDK 或 cURL，通过统一 Base URL 和 Bearer 鉴权接入模型能力。',
+      copy: '复制',
+      authHint: '请求头使用 Authorization: Bearer YOUR_LONGDAO_API_KEY。',
+      tabsLabel: 'API 接入示例',
+      copyCode: '复制代码',
+      serverOnly: '仅服务端使用',
+      serverOnlyDesc: '不要把 API Key 写入浏览器、移动端安装包或公开仓库。',
+      rotateKeys: '定期轮换密钥',
+      rotateKeysDesc: '按项目拆分密钥，发现泄露后立即禁用并重新创建。',
+      leastPrivilege: '最小权限',
+      leastPrivilegeDesc: '为不同业务设置独立额度、有效期和访问范围。',
+      copied: '已复制到剪贴板'
+    },
+    plans: {
+      badge: '资金与套餐',
+      title: '龙道 AI 套餐中心',
+      description: '查看套餐能力、当前订阅与目标计费规则。真实支付和下单将在支付系统接入后开放。',
+      balance: '当前余额',
+      goRecharge: '前往充值',
+      billingPriority: '套餐额度优先消耗，额度用尽后使用余额。',
+      paymentPendingTitle: '支付系统接入中',
+      paymentPendingDescription: '当前不会创建支付订单、扣款或变更余额；套餐按钮仅用于展示产品结构。',
+      availablePlans: '可用套餐',
+      availablePlansDesc: '以下为前端展示方案，具体价格、额度和权益由运营后台配置。',
+      frontendPreview: '方案预览',
+      recommended: '推荐',
+      price: '套餐价格',
+      configuredByOperations: '由运营配置',
+      paymentConnecting: '支付接入中',
+      currentSubscriptions: '当前订阅',
+      currentSubscriptionsDesc: '读取账户现有的真实订阅数据。',
+      viewDetails: '查看订阅详情',
+      unnamedPlan: '未命名套餐',
+      subscriptionActive: '订阅已生效',
+      monthlyQuota: '月度额度（USD 源额度）',
+      multiplier: '计费倍率',
+      noSubscription: '暂无有效订阅',
+      noSubscriptionDesc: '支付后端接入后，可在套餐中心完成真实购买。',
+      unlimitedOrConfigured: '不限或由运营配置',
+      viewPlanCenter: '查看套餐中心',
+      starter: {
+        title: '入门版',
+        description: '适合个人开发者与小型验证项目。',
+        feature1: '统一 API Key 管理',
+        feature2: '基础用量与消费记录',
+        feature3: '标准接入支持'
+      },
+      professional: {
+        title: '专业版',
+        description: '适合稳定运行的产品与开发团队。',
+        feature1: '更高额度与并发配置',
+        feature2: '团队化密钥和用量管理',
+        feature3: '优先技术支持'
+      },
+      enterprise: {
+        title: '企业版',
+        description: '适合需要权限、审计和专属保障的企业。',
+        feature1: '企业级权限与审计能力',
+        feature2: '专属额度和渠道策略',
+        feature3: '商务与技术服务支持'
+      }
+    },
+    finance: {
+      recharge: {
+        badge: '财务中心',
+        title: '余额充值',
+        description: '查看人民币账面余额与支付系统接入状态。真实充值将在支付后端完成后开放。',
+        currentBalance: '当前账面余额',
+        balanceHint: '余额仅展示账户现有数据，本页面不会修改余额。',
+        accountStatus: '支付状态',
+        notConnected: '支付系统接入中',
+        currency: '账面币种',
+        amountTitle: '选择充值金额',
+        customAmount: '自定义金额',
+        customAmountPlaceholder: '请输入人民币金额',
+        paymentMethodTitle: '支付方式',
+        paymentMethodPending: '通道尚未接入',
+        integrationNotice: '支付系统接入中。当前不会创建订单、发起扣款或变更账户余额。',
+        disabledButton: '支付未接入，暂不可充值',
+        paymentMethods: {
+          card: '银行卡支付',
+          wallet: '企业数字钱包'
+        }
+      },
+      orders: {
+        badge: '财务中心',
+        title: '订单记录',
+        description: '支付后端接入后，可在此查看真实订单状态和支付记录。',
+        emptyTitle: '暂无真实订单',
+        emptyDescription: '支付系统尚未接入，因此当前没有可展示的真实订单，也不会生成模拟订单。'
+      }
+    },
+    adminConstruction: {
+      badge: '功能建设中',
+      futureCapabilities: '计划能力',
+      statusTitle: '当前状态',
+      statusDescription: '页面结构已完成，后端接口、权限和数据模型将在对应阶段接入。',
+      disabledNotice: '当前为只读建设中状态，不提供会产生业务数据的操作。',
+      paymentOrders: {
+        title: '支付订单管理',
+        description: '后续用于查询真实支付订单、对账、退款和导出。',
+        capabilities: {
+          search: '订单查询与状态筛选',
+          reconciliation: '支付通道对账',
+          refunds: '退款与异常处理',
+          export: '财务记录导出'
+        }
+      },
+      fundTransactions: {
+        title: '资金流水',
+        description: '后续用于记录余额入账、扣减、调整和审计轨迹。',
+        capabilities: {
+          ledger: '用户资金台账',
+          adjustments: '人工调整与审批',
+          auditTrail: '不可抵赖审计记录',
+          export: '流水导出与核对'
+        }
+      },
+      riskEvents: {
+        title: '风险事件',
+        description: '后续用于汇总异常请求、账户行为和风控处置记录。',
+        capabilities: {
+          rules: '风险规则与命中原因',
+          alerts: '实时告警和通知',
+          reviewQueue: '人工复核队列',
+          reporting: '风险趋势与报表'
+        }
+      }
     }
   },
 
@@ -244,6 +527,7 @@ export default {
 
   // Common
   common: {
+    copyrightOwner: '龙道集团',
     loading: '加载中...',
     justNow: '刚刚',
     save: '保存',
@@ -357,6 +641,21 @@ export default {
 
   // Auth
   auth: {
+    brandEyebrow: '龙道集团',
+    platformTagline: '企业级 AI API 服务平台',
+    panelTitle: '用统一密钥稳定连接全球 AI 能力',
+    panelDescription: '龙道集团为开发者与企业提供安全、稳定、透明计费的 AI API 接入服务，帮助团队以可审计方式管理模型、额度和成本。',
+    billingPrincipleTitle: '计费规则说明',
+    billingPrincipleDesc: '套餐额度优先消耗，额度用尽后使用余额；支付与资金能力按后续阶段接入。',
+    loginEyebrow: '安全登录',
+    registerEyebrow: '创建账号',
+    securityNote: '请妥善保管账号与 API Key，不要在浏览器前端或公开仓库暴露密钥。',
+    registerNote: '注册流程会继续遵循平台公开设置：邮箱验证、邀请码、推广码和 Turnstile 仅在后端开启时展示。',
+    metrics: {
+      compatible: '兼容接入',
+      routing: '稳定路由',
+      billing: '透明计费'
+    },
     welcomeBack: '欢迎回来',
     signInToAccount: '登录您的账户以继续',
     signIn: '登录',
@@ -701,6 +1000,8 @@ export default {
   usage: {
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
+    rmbBilledAmount: '人民币账面消费',
+    usdSourceCost: 'USD 源成本参考',
     costDetails: '成本明细',
     tokenDetails: 'Token 明细',
     cacheTtlOverriddenHint: '缓存 TTL Override 已启用',

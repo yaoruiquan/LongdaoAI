@@ -24,8 +24,8 @@ export const useAppStore = defineStore('app', () => {
   // Public settings cache state
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
-  const siteName = ref<string>('Sub2API')
-  const siteLogo = ref<string>('')
+  const siteName = ref<string>('龙道 AI')
+  const siteLogo = ref<string>('/longdao-logo.png')
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
   const apiBaseUrl = ref<string>('')
@@ -285,8 +285,8 @@ export const useAppStore = defineStore('app', () => {
    */
   function applySettings(config: PublicSettings): void {
     cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'Sub2API'
-    siteLogo.value = config.site_logo || ''
+    siteName.value = config.site_name || '龙道 AI'
+    siteLogo.value = config.site_logo || '/longdao-logo.png'
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
     apiBaseUrl.value = config.api_base_url || ''
@@ -321,7 +321,7 @@ export const useAppStore = defineStore('app', () => {
         turnstile_site_key: '',
         site_name: siteName.value,
         site_logo: siteLogo.value,
-        site_subtitle: '',
+        site_subtitle: '企业级 AI API 服务平台',
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
         doc_url: docUrl.value,

@@ -1,6 +1,15 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
+      <section class="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-card dark:border-dark-700 dark:bg-dark-900 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary-600 dark:text-primary-400">{{ t('longdao.plans.currentSubscriptions') }}</p>
+          <h1 class="mt-2 text-2xl font-semibold text-gray-950 dark:text-white">{{ t('userSubscriptions.title') }}</h1>
+          <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">{{ t('longdao.plans.billingPriority') }}</p>
+        </div>
+        <router-link to="/purchase" class="btn btn-primary">{{ t('longdao.plans.viewPlanCenter') }}</router-link>
+      </section>
+
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center py-12">
         <div
@@ -21,6 +30,7 @@
         <p class="text-gray-500 dark:text-dark-400">
           {{ t('userSubscriptions.noActiveSubscriptionsDesc') }}
         </p>
+        <router-link to="/purchase" class="btn btn-primary mt-6">{{ t('longdao.plans.viewPlanCenter') }}</router-link>
       </div>
 
       <!-- Subscriptions Grid -->
@@ -36,9 +46,9 @@
           >
             <div class="flex items-center gap-3">
               <div
-                class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/30"
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30"
               >
-                <Icon name="creditCard" size="md" class="text-purple-600 dark:text-purple-400" />
+                <Icon name="creditCard" size="md" class="text-primary-600 dark:text-primary-400" />
               </div>
               <div>
                 <h3 class="font-semibold text-gray-900 dark:text-white">
