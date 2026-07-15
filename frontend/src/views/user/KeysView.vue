@@ -376,6 +376,11 @@
       </template>
     </TablePageLayout>
 
+    <ApiIntegrationGuide
+      class="mt-6"
+      :base-url="publicSettings?.api_base_url || undefined"
+    />
+
     <!-- Create/Edit Modal -->
     <BaseDialog
       :show="showCreateModal || showEditModal"
@@ -1058,6 +1063,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
+import ApiIntegrationGuide from '@/components/keys/ApiIntegrationGuide.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
