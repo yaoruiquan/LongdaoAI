@@ -1,0 +1,138 @@
+# =============================================================================
+# 龙道 AI 生产 Caddy 反向代理（容器化，DEP-002）
+# =============================================================================
+# 说明：
+#   - 域名来自环境变量 {$LONGDAO_DOMAIN}，在 docker-compose.yml 的 caddy.environment
+#     或 .env 中设置（例如 LONGDAO_DOMAIN=api.longdao.example.com）。
+#   - 使用域名模式时 Caddy 默认自动签发 Let's Encrypt 证书并启用 HTTPS，
+#     HTTP(80) 会自动 301 跳转到 HTTPS(443)，无需额外配置。
+#   - 反代目标是容器服务名 sub2api:8080（内部网络），不是 localhost。
+#   - 流式响应（SSE / 逐 token 返回）关键：flush_interval -1 立即刷新、禁用缓冲。
+# =============================================================================
+
+{
+	# ACME 注册邮箱（证书到期通知）。为空时 Caddy 仍可签发，仅无邮件通知。
+	email {$LONGDAO_ACME_EMAIL}
+	# 如需调试证书问题，可临时切到 staging，避免触发 LE 生产限流：
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$LONGDAO_DOMAIN} {
+	# =========================================================================
+	# 静态资源长期缓存（高优先级，放在最前面）
+	# 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
+	# =========================================================================
+	@static {
+		path /assets/*
+		path /logo.png
+		path /favicon.ico
+	}
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		-Pragma
+		-Expires
+	}
+
+	# =========================================================================
+	# TLS 安全配置（证书由 Caddy 自动向 Let's Encrypt 申请与续期）
+	# =========================================================================
+	tls {$LONGDAO_ACME_EMAIL} {
+		protocols tls1.2 tls1.3
+	}
+
+	# =========================================================================
+	# 反向代理到应用容器（内部网络服务名 sub2api:8080）
+	# =========================================================================
+	reverse_proxy sub2api:8080 {
+		# ---- 健康检查 ----
+		health_uri /health
+		health_interval 30s
+		health_timeout 10s
+		health_status 200
+
+		# ---- 负载均衡（单节点无副作用，多节点时有用）----
+		lb_policy round_robin
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
+		# ---- 流式响应关键：禁用缓冲，逐块立即 flush 给客户端 ----
+		# -1 表示每次写入立即刷新，保证 SSE / 逐 token 流式实时返回，
+		# 不会被反代攒批缓冲（Caddy 默认已不缓冲，这里显式声明以确保）。
+		flush_interval -1
+
+		# ---- 透传真实客户端信息 ----
+		# 后端获取 IP 的建议优先级：CF-Connecting-IP → X-Real-IP → X-Forwarded-For
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		# 保留 Cloudflare 原始头（若存在），兼容 CF 前置场景
+		header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+
+		# ---- 传输层超时与连接池 ----
+		# 流式接口可能长时间保持连接，读超时给足；写超时不设短值，
+		# dial_timeout 控制到上游建连超时。
+		transport http {
+			dial_timeout 10s
+			# 流式友好：读超时给到较长值以承载长连接 SSE 响应
+			read_timeout 600s
+			write_timeout 600s
+			keepalive 120s
+			keepalive_idle_conns 256
+			read_buffer 16KB
+			write_buffer 16KB
+			compression off
+		}
+
+		# ---- 故障转移 ----
+		fail_duration 30s
+		max_fails 3
+		unhealthy_status 500 502 503 504
+	}
+
+	# =========================================================================
+	# 压缩配置（流式 SSE 一般为 text/event-stream，不在下列 match 内，不会被压缩缓冲）
+	# =========================================================================
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# =========================================================================
+	# 请求体大小限制（防止大文件攻击，可按需调整）
+	# =========================================================================
+	request_body {
+		max_size 100MB
+	}
+
+	# =========================================================================
+	# 访问日志（json + 滚动）
+	# =========================================================================
+	log {
+		output file /var/log/caddy/longdao.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	# =========================================================================
+	# 错误处理
+	# =========================================================================
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}
