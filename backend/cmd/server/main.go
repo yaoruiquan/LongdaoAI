@@ -59,7 +59,19 @@ func main() {
 	// Parse command line flags
 	setupMode := flag.Bool("setup", false, "Run setup wizard in CLI mode")
 	showVersion := flag.Bool("version", false, "Show version information")
+	migrateMode := flag.Bool("migrate", false, "Apply database migrations and exit")
 	flag.Parse()
+
+	// 独立迁移命令：不依赖 .installed 标记，用于发布时补执行遗漏的迁移。
+	// 失败必须以非零退出码结束，供发布脚本据此阻止启动新版本应用。
+	if *migrateMode {
+		if err := runMigrate(); err != nil {
+			log.Printf("migration failed: %v", err)
+			os.Exit(1)
+		}
+		log.Println("migrations applied successfully")
+		return
+	}
 
 	if *showVersion {
 		log.Printf("Sub2API %s (commit: %s, built: %s)\n", Version, Commit, Date)

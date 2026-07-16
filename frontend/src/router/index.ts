@@ -687,6 +687,41 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '404 Not Found'
     }
+  },
+
+  // =========================================================================
+  // 龙道 AI 专属路由（充值/订单/资金流水/支付订单/风险事件占位页）
+  // =========================================================================
+  {
+    path: '/recharge',
+    name: 'Recharge',
+    component: () => import('@/views/user/RechargeView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Balance Recharge',
+      titleKey: 'longdao.finance.recharge.title', descriptionKey: 'longdao.finance.recharge.description' }
+  },
+  {
+    path: '/admin/payment-orders',
+    name: 'AdminPaymentOrders',
+    component: () => import('@/views/admin/PaymentOrdersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Payment Orders',
+      titleKey: 'longdao.adminConstruction.paymentOrders.title',
+      descriptionKey: 'longdao.adminConstruction.paymentOrders.description' }
+  },
+  {
+    path: '/admin/fund-transactions',
+    name: 'AdminFundTransactions',
+    component: () => import('@/views/admin/FundTransactionsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Fund Transactions',
+      titleKey: 'longdao.adminConstruction.fundTransactions.title',
+      descriptionKey: 'longdao.adminConstruction.fundTransactions.description' }
+  },
+  {
+    path: '/admin/risk-events',
+    name: 'AdminRiskEvents',
+    component: () => import('@/views/admin/RiskEventsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Risk Events',
+      titleKey: 'longdao.adminConstruction.riskEvents.title',
+      descriptionKey: 'longdao.adminConstruction.riskEvents.description' }
   }
 ]
 

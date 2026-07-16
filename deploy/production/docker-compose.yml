@@ -1,0 +1,314 @@
+# =============================================================================
+# 龙道 AI 生产环境 Docker Compose（DEP-001）
+# =============================================================================
+# 与上游 deploy/docker-compose.yml 的关键差异（生产收敛）：
+#   1. 镜像固定为自有版本化镜像，禁止 latest：
+#        image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?...}
+#      IMAGE_TAG 必须在 .env 中显式指定（例如 v2026.07.15-1），否则 compose 直接报错。
+#   2. 应用不再直接暴露公网：sub2api 移除 ports 映射，对外只经 caddy 反向代理。
+#      唯一对公网开放的端口是 caddy 的 80/443。
+#   3. postgres / redis 不映射任何宿主机端口（仅内部网络可达）。
+#   4. 每个服务都加了 CPU/内存资源限制与 json-file 日志轮转，防止资源/磁盘被打爆。
+#   5. 新增容器化 Caddy 服务，自动签发 Let's Encrypt 证书 + HTTPS。
+#
+# 快速开始：
+#   1. cp .env.example .env  然后填写所有必填密钥与 IMAGE_TAG、LONGDAO_DOMAIN
+#   2. docker compose config -q   # 校验配置
+#   3. docker compose up -d
+#   4. docker compose logs -f sub2api
+#   5. 访问 https://<你的域名>
+#
+# 首次数据库初始化：AUTO_SETUP=true 会在首次启动时自动建表并创建管理员。
+# 如需手动迁移（升级镜像后显式跑一次），见 README“数据库迁移”一节：
+#   docker compose run --rm sub2api -migrate
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # 龙道 AI 应用（不对外暴露端口，仅经 caddy 访问）
+  # ===========================================================================
+  sub2api:
+    # 固定自有版本化镜像。绝不使用 latest。
+    # IMAGE_TAG 用 :? 强制要求在 .env 中指定，缺失即报错，避免误部署。
+    image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?IMAGE_TAG is required（请在 .env 中指定，例如 v2026.07.15-1）}
+    container_name: longdao-sub2api
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    # 生产不暴露端口：对外仅通过 caddy 容器经内部网络访问 sub2api:8080。
+    # 如需本地调试，可临时仅绑定回环地址（默认注释掉）：
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    volumes:
+      # 数据持久化（config.yaml 会自动生成在此目录）
+      - sub2api_data:/app/data
+      # 可选：挂载自定义 config.yaml（先创建文件再取消注释）
+      # - ./config.yaml:/app/data/config.yaml:ro
+    environment:
+      # ---- 自动初始化（Docker 部署必需）----
+      - AUTO_SETUP=true
+
+      # ---- 服务配置 ----
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      # 生产默认 release 模式；非调试勿改为 debug。
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - RUN_MODE=${RUN_MODE:-standard}
+
+      # ---- 数据库（PostgreSQL）----
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+
+      # ---- Redis ----
+      # 生产环境 REDIS_PASSWORD 必填（用 :? 强制），避免内部网络内被未授权访问。
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required（生产必填）}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+      # ---- 管理员账号（首次运行自动创建）----
+      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+
+      # ---- JWT ----
+      # 必须固定 JWT_SECRET，否则容器重启后登录态失效。生成：openssl rand -hex 32
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required（openssl rand -hex 32）}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # ---- TOTP(2FA) ----
+      # 必须固定，否则重启后所有已配置 2FA 失效。生成：openssl rand -hex 32
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required（openssl rand -hex 32）}
+
+      # ---- 时区（影响所有时间运算，含“今日”统计边界）----
+      - TZ=${TZ:-Asia/Shanghai}
+
+      # ---- Gemini OAuth（按需）----
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+
+      # ---- 安全（URL 白名单）----
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
+
+      # ---- 在线更新代理（访问 GitHub / 价格数据）----
+      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - longdao-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        # compose v2（非 swarm）下 limits 生效；reservations 作为软预留。
+        # 按实际负载调整。应用是主要工作负载，给较高配额。
+        limits:
+          cpus: "2.0"
+          memory: 1536M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # ===========================================================================
+  # PostgreSQL 数据库（不映射宿主机端口，仅内部网络可达）
+  # ===========================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: longdao-postgres
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
+      # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
+      # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。必须显式设置。
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - TZ=${TZ:-Asia/Shanghai}
+    networks:
+      - longdao-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    # 不暴露端口到宿主机。如需调试可临时添加：ports: ["127.0.0.1:5433:5432"]
+
+  # ===========================================================================
+  # Redis 缓存（不映射宿主机端口，仅内部网络可达，生产强制密码）
+  # ===========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: longdao-redis
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - redis_data:/data
+    # 生产强制 requirepass（REDIS_PASSWORD 在 sub2api 服务处已用 :? 强制非空）。
+    command: >
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # REDISCLI_AUTH 供 redis-cli 认证使用（比 -a 更安全，避免出现在进程列表）
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-}
+    networks:
+      - longdao-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    # 不暴露端口到宿主机。如需调试可临时添加：ports: ["127.0.0.1:6380:6379"]
+
+  # ===========================================================================
+  # Caddy 反向代理（唯一对公网开放：80/443，自动签发 Let's Encrypt 证书）
+  # ===========================================================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: longdao-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3（QUIC）可选，如需启用取消注释：
+      # - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data           # ACME 证书与账户（务必持久化，避免频繁重签触发 LE 限流）
+      - caddy_config:/config       # Caddy 自动生成的运行时配置
+      - caddy_logs:/var/log/caddy  # 访问日志（json + roll）
+    environment:
+      # Caddyfile 顶部用 {$LONGDAO_DOMAIN} 读取此变量。必填，否则无法签发证书。
+      - LONGDAO_DOMAIN=${LONGDAO_DOMAIN:?LONGDAO_DOMAIN is required（你的对外域名，例如 api.longdao.example.com）}
+      # Let's Encrypt 注册邮箱（用于证书到期通知，推荐设置）
+      - LONGDAO_ACME_EMAIL=${LONGDAO_ACME_EMAIL:-}
+      - TZ=${TZ:-Asia/Shanghai}
+    depends_on:
+      sub2api:
+        condition: service_healthy
+    networks:
+      - longdao-network
+    healthcheck:
+      # 通过 Caddy admin API 探活（本地回环，无需依赖证书/域名解析）
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+# =============================================================================
+# 命名数据卷（显式命名，便于备份/迁移/识别归属）
+# =============================================================================
+volumes:
+  sub2api_data:
+    name: longdao_sub2api_data
+    driver: local
+  postgres_data:
+    name: longdao_postgres_data
+    driver: local
+  redis_data:
+    name: longdao_redis_data
+    driver: local
+  caddy_data:
+    name: longdao_caddy_data
+    driver: local
+  caddy_config:
+    name: longdao_caddy_config
+    driver: local
+  caddy_logs:
+    name: longdao_caddy_logs
+    driver: local
+
+# =============================================================================
+# 内部网络（bridge，仅 caddy 的 80/443 对外，其余服务互相内部可达）
+# =============================================================================
+networks:
+  longdao-network:
+    name: longdao-network
+    driver: bridge
