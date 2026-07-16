@@ -263,7 +263,7 @@ services:
       - longdao-network
     healthcheck:
       # 通过 Caddy admin API 探活（本地回环，无需依赖证书/域名解析）
-      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:2019/config/"]
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
       interval: 30s
       timeout: 10s
       retries: 3

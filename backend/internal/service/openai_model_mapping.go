@@ -27,6 +27,17 @@ func resolveOpenAIUpstreamModel(model string) string {
 	return normalizeCodexModel(strings.TrimSpace(model))
 }
 
+// resolveOpenAIUpstreamModelForAccount 只对 OAuth 账号执行 Codex 模型名规范化。
+// OAuth 走 ChatGPT 官方内部 backend，需要 canonical codex 名；
+// apikey 账号指向任意 OpenAI 兼容上游（含第三方聚合站），必须保留用户/映射给定的
+// 模型原值，否则会把上游真实支持的模型（如 gpt-5.6-sol）错误改写成 gpt-5.1 导致 404。
+func resolveOpenAIUpstreamModelForAccount(account *Account, model string) string {
+	if account != nil && account.Type == AccountTypeOAuth {
+		return resolveOpenAIUpstreamModel(model)
+	}
+	return strings.TrimSpace(model)
+}
+
 func isBareGPT53CodexSparkModel(model string) bool {
 	modelID := strings.TrimSpace(model)
 	if modelID == "" {
