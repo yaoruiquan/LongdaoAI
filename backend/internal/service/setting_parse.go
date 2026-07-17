@@ -232,6 +232,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
 
 		SettingKeyAllowUserViewErrorRequests: "false",
+
+		// 余额显示汇率（仅展示层，1 USD 显示为多少 CNY）
+		SettingKeyBalanceDisplayCnyRate: strconv.FormatFloat(DefaultBalanceDisplayCnyRate, 'f', -1, 64),
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -829,6 +832,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.BalanceLowNotifyThreshold = v
 	}
 	result.BalanceLowNotifyRechargeURL = settings[SettingKeyBalanceLowNotifyRechargeURL]
+	result.BalanceDisplayCnyRate = parseBalanceDisplayCnyRate(settings[SettingKeyBalanceDisplayCnyRate])
 	result.SubscriptionExpiryNotifyEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionExpiryNotifyEnabled])
 
 	// 账号限额通知

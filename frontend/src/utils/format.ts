@@ -75,6 +75,34 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
 }
 
 /**
+ * 余额显示汇率默认值（1 USD 展示为多少 CNY）。
+ * 与后端 service.DefaultBalanceDisplayCnyRate 保持一致，作为读取公开设置失败时的兜底。
+ */
+export const DEFAULT_BALANCE_DISPLAY_CNY_RATE = 7.15
+
+/**
+ * 将美元余额按显示汇率换算成人民币字符串（仅用于用户端展示层）。
+ *
+ * 注意：这是纯展示换算，不参与任何计费/扣费/充值逻辑。余额存储与计费始终以美元为本位，
+ * 此函数只把「美元数值 × 显示汇率」渲染成 ¥ 金额供用户查看。
+ *
+ * @param usdBalance 美元余额（存储值本位）
+ * @param rate 显示汇率（1 USD = rate CNY），非正数或缺省时回退到默认值
+ * @returns 形如 "¥71.50" 的字符串
+ */
+export function formatBalanceCNY(
+  usdBalance: number | null | undefined,
+  rate?: number | null
+): string {
+  const usd = typeof usdBalance === 'number' && Number.isFinite(usdBalance) ? usdBalance : 0
+  const effectiveRate =
+    typeof rate === 'number' && Number.isFinite(rate) && rate > 0
+      ? rate
+      : DEFAULT_BALANCE_DISPLAY_CNY_RATE
+  return `¥${(usd * effectiveRate).toFixed(2)}`
+}
+
+/**
  * 格式化字节大小
  * @param bytes 字节数
  * @param decimals 小数位数

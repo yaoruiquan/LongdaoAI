@@ -235,6 +235,9 @@ export interface PublicSettings {
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
+  // 余额显示汇率（1 USD 展示为多少 CNY）。仅用户端展示层使用，不参与计费。
+  // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失，读取时按默认值兜底。
+  balance_display_cny_rate?: number
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean

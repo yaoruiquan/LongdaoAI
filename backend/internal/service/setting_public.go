@@ -216,6 +216,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBalanceLowNotifyEnabled,
 		SettingKeyBalanceLowNotifyThreshold,
 		SettingKeyBalanceLowNotifyRechargeURL,
+		SettingKeyBalanceDisplayCnyRate,
 		SettingKeyAccountQuotaNotifyEnabled,
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
@@ -280,6 +281,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		balanceLowNotifyThreshold = v
 	}
 
+	balanceDisplayCnyRate := parseBalanceDisplayCnyRate(settings[SettingKeyBalanceDisplayCnyRate])
+
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -326,6 +329,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
 		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings[SettingKeyBalanceLowNotifyRechargeURL],
+		BalanceDisplayCnyRate:            balanceDisplayCnyRate,
 
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
@@ -338,6 +342,17 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 	}, nil
+}
+
+// parseBalanceDisplayCnyRate parses the stored USD→CNY display rate. Empty /
+// invalid / non-positive values fall back to defaultBalanceDisplayCnyRate so the
+// user-facing balance is never shown as ¥0.
+func parseBalanceDisplayCnyRate(raw string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || v <= 0 {
+		return DefaultBalanceDisplayCnyRate
+	}
+	return v
 }
 
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
@@ -487,6 +502,9 @@ type PublicSettingsInjectionPayload struct {
 	AccountQuotaNotifyEnabled   bool    `json:"account_quota_notify_enabled"`
 	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
+	// BalanceDisplayCnyRate 是用户端余额展示汇率（1 USD 显示为 X CNY）。仅影响展示层，
+	// 存储与计费仍以 USD 本位。SSR 注入以便首屏无闪烁展示 ¥ 余额。
+	BalanceDisplayCnyRate float64 `json:"balance_display_cny_rate"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -555,6 +573,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		BalanceDisplayCnyRate:            settings.BalanceDisplayCnyRate,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,

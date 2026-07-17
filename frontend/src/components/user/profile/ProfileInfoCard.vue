@@ -67,7 +67,7 @@
                   {{ t('profile.accountBalance') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
+                  {{ formatBalanceCNY(user?.balance || 0, balanceDisplayCnyRate) }}
                 </p>
               </div>
               <div
@@ -181,8 +181,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { useAppStore } from '@/stores/app'
+import { formatBalanceCNY } from '@/utils/format'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
@@ -208,6 +211,10 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+
+// 余额显示汇率（1 USD → CNY），仅用户端展示层使用，不参与计费。
+const appStore = useAppStore()
+const { balanceDisplayCnyRate } = storeToRefs(appStore)
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {
@@ -271,10 +278,6 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   github: 'GitHub',
   google: 'Google'
 }))
-
-function formatCurrency(value: number): string {
-  return `$${value.toFixed(2)}`
-}
 
 function normalizeProvider(value: string): UserAuthProvider | null {
   const normalized = value.trim().toLowerCase()
