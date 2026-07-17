@@ -151,3 +151,5 @@ output/
 !docs/plans/*.md
 !docs/搭建AI中转站指南.md
 !docs/龙道AI服务器部署实录.md
+!docs/knowledge-base/
+!docs/knowledge-base/*.md
