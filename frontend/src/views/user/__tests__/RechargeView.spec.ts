@@ -38,6 +38,12 @@ vi.mock('@/stores/auth', () => ({
   }),
 }))
 
+vi.mock('@/stores/app', () => ({
+  useAppStore: () => ({
+    balanceDisplayCnyRate: 7.15,
+  }),
+}))
+
 vi.mock('@/components/layout/AppLayout.vue', () => ({
   default: { template: '<main><slot /></main>' },
 }))
@@ -55,7 +61,8 @@ describe('RechargeView', () => {
     })
 
     expect(wrapper.text()).toContain('账户充值')
-    expect(wrapper.text()).toContain('¥12.34')
+    // 余额按显示汇率换算成人民币展示：12.34 USD × 7.15 = ¥88.23（展示层换算，不参与计费）
+    expect(wrapper.text()).toContain('¥88.23')
     expect(wrapper.text()).toContain('¥100')
     expect(wrapper.text()).toContain('¥1000')
     expect(wrapper.text()).toContain('银行卡')

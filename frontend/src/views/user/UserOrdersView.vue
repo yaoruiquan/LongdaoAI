@@ -62,7 +62,7 @@
           </div>
           <div class="mt-2 flex justify-between text-sm">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="text-gray-900 dark:text-white">${{ refundTarget.amount.toFixed(2) }}</span>
+            <span class="text-gray-900 dark:text-white">{{ formatBalanceCNY(refundTarget.amount, balanceDisplayCnyRate) }}</span>
           </div>
         </div>
         <div>
@@ -94,10 +94,13 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
+import { formatBalanceCNY } from '@/utils/format'
 
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
+// 余额显示汇率（1 USD → CNY），仅用户端展示层使用，不参与计费/退款金额本位。
+const balanceDisplayCnyRate = computed(() => appStore.balanceDisplayCnyRate)
 
 const loading = ref(false)
 const actionLoading = ref(false)

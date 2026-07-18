@@ -20,7 +20,7 @@
               {{ t('longdao.finance.recharge.currentBalance') }}
             </p>
             <p class="mt-3 text-4xl font-bold">
-              ¥{{ currentBalance }}
+              {{ currentBalance }}
             </p>
             <p class="mt-3 text-sm text-primary-100">
               {{ t('longdao.finance.recharge.balanceHint') }}
@@ -110,9 +110,12 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
+import { formatBalanceCNY } from '@/utils/format'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const appStore = useAppStore()
 
 const presetAmounts = [100, 300, 500, 1000]
 const paymentMethodKeys = [
@@ -123,7 +126,9 @@ const paymentMethodKeys = [
 const selectedAmount = ref(presetAmounts[1])
 const customAmount = ref('')
 
-const currentBalance = computed(() => (authStore.user?.balance ?? 0).toFixed(2))
+const currentBalance = computed(() =>
+  formatBalanceCNY(authStore.user?.balance ?? 0, appStore.balanceDisplayCnyRate)
+)
 
 function selectPreset(amount: number) {
   selectedAmount.value = amount

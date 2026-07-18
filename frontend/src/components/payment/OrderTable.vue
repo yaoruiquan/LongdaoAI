@@ -19,7 +19,7 @@
           ({{ t('payment.orders.fee') }} {{ row.fee_rate }}%)
         </span>
         <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
-          {{ t('payment.orders.creditedAmount') }}: {{ creditedAmountSymbol }}{{ row.amount.toFixed(2) }}
+          {{ t('payment.orders.creditedAmount') }}: {{ formatBalanceCNY(row.amount, balanceDisplayCnyRate) }}
         </div>
       </div>
     </template>
@@ -46,8 +46,13 @@ import type { Column } from '@/components/common/types'
 import DataTable from '@/components/common/DataTable.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import { currencySymbol } from '@/components/payment/currency'
+import { useAppStore } from '@/stores'
+import { formatBalanceCNY } from '@/utils/format'
 
 const { t } = useI18n()
+const appStore = useAppStore()
+// 余额显示汇率（1 USD → CNY），仅用户端展示层使用，不参与计费。
+const balanceDisplayCnyRate = computed(() => appStore.balanceDisplayCnyRate)
 
 const props = defineProps<{
   orders: PaymentOrder[]
@@ -56,8 +61,6 @@ const props = defineProps<{
 }>()
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
-
-const creditedAmountSymbol = currencySymbol('USD')
 
 function paymentAmountSymbol(order: PaymentOrder): string {
   return currencySymbol(order.currency)
