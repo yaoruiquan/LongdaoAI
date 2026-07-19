@@ -65,16 +65,16 @@
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalCost') }}</p>
         <p class="text-xl font-bold text-green-600">
-          ${{ (stats?.total_actual_cost || 0).toFixed(4) }}
+          {{ money(stats?.total_actual_cost || 0) }}
         </p>
         <p class="text-xs text-gray-400">
           <template v-if="showAccountCost && totalAccountCost != null">
-            <span class="text-orange-500">{{ t('usage.accountCost') }} ${{ totalAccountCost.toFixed(4) }}</span>
+            <span class="text-orange-500">{{ t('usage.accountCost') }} {{ money(totalAccountCost) }}</span>
             <span> · </span>
           </template>
           <span>
             {{ t('usage.standardCost') }}
-            <span :class="{ 'line-through': strikeStandardCost }">${{ (stats?.total_cost || 0).toFixed(4) }}</span>
+            <span :class="{ 'line-through': strikeStandardCost }">{{ money(stats?.total_cost || 0) }}</span>
           </span>
         </p>
       </div>
@@ -94,15 +94,24 @@ import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import type { UsageStatsResponse } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
+import { formatCostDisplay } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
   showAccountCost?: boolean
   strikeStandardCost?: boolean
+  /**
+   * 用户端展示层汇率（1 USD → CNY）。传正数则按 ¥ 显示，缺省/非正数按 $ 显示（管理端默认）。
+   */
+  displayCnyRate?: number | null
 }>(), {
   showAccountCost: true,
   strikeStandardCost: false,
+  displayCnyRate: null,
 })
+
+// 消费金额换算：管理端不传 displayCnyRate 保持 $；用户端传汇率显示 ¥。保留 4 位小数避免小额归零。
+const money = (usd: number) => formatCostDisplay(usd, props.displayCnyRate, 4)
 
 const { t } = useI18n()
 

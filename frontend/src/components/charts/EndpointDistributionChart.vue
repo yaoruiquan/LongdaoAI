@@ -107,10 +107,10 @@
                   {{ formatTokens(item.total_tokens) }}
                 </td>
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                  ${{ formatCost(item.actual_cost) }}
+                  {{ money(item.actual_cost) }}
                 </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
-                  ${{ formatCost(item.cost) }}
+                  {{ money(item.cost) }}
                 </td>
               </tr>
               <tr v-if="expandedKey === item.endpoint">
@@ -118,6 +118,7 @@
                   <UserBreakdownSubTable
                     :items="breakdownItems"
                     :loading="breakdownLoading"
+                    :display-cny-rate="displayCnyRate"
                   />
                 </td>
               </tr>
@@ -164,6 +165,8 @@ const props = withDefaults(
     startDate?: string
     endDate?: string
     filters?: Record<string, any>
+    /** 用户端展示层汇率（1 USD → CNY）。传正数则金额按 ¥ 显示，缺省/非正数按 $ 显示（管理端默认）。 */
+    displayCnyRate?: number | null
   }>(),
   {
     upstreamEndpointStats: () => [],
@@ -174,9 +177,25 @@ const props = withDefaults(
     source: 'inbound',
     showMetricToggle: false,
     showSourceToggle: false,
-    enableBreakdown: true
+    enableBreakdown: true,
+    displayCnyRate: null
   }
 )
+
+// 金额展示前缀与换算：用户端传 displayCnyRate 显示 ¥（USD×汇率），管理端不传保持 $。
+const moneySymbol = computed(() =>
+  typeof props.displayCnyRate === 'number' && Number.isFinite(props.displayCnyRate) && props.displayCnyRate > 0
+    ? '¥'
+    : '$'
+)
+const toDisplayAmount = (usd: number): number => {
+  const rate = props.displayCnyRate
+  return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? usd * rate : usd
+}
+const money = (usd: number | null | undefined): string => {
+  const safe = typeof usd === 'number' && Number.isFinite(usd) ? usd : 0
+  return `${moneySymbol.value}${formatCost(toDisplayAmount(safe))}`
+}
 
 const emit = defineEmits<{
   'update:metric': [value: DistributionMetric]
@@ -269,7 +288,7 @@ const doughnutOptions = computed(() => ({
           const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
           const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
           const formattedValue = props.metric === 'actual_cost'
-            ? `$${formatCost(value)}`
+            ? money(value)
             : formatTokens(value)
           return `${context.label}: ${formattedValue} (${percentage}%)`
         }

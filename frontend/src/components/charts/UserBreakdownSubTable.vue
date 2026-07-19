@@ -23,13 +23,13 @@
             {{ formatTokens(user.total_tokens) }}
           </td>
           <td class="py-1 text-right text-green-600 dark:text-green-400">
-            ${{ formatCost(user.actual_cost) }}
+            {{ money(user.actual_cost) }}
           </td>
           <td v-if="showAccountCost" class="py-1 text-right text-orange-500 dark:text-orange-400">
-            ${{ formatCost(user.account_cost) }}
+            {{ money(user.account_cost) }}
           </td>
           <td class="py-1 pr-1 text-right text-gray-400 dark:text-gray-500">
-            ${{ formatCost(user.cost) }}
+            {{ money(user.cost) }}
           </td>
         </tr>
       </tbody>
@@ -49,12 +49,24 @@ const props = withDefaults(defineProps<{
   items: UserBreakdownItem[]
   loading?: boolean
   showAccountCost?: boolean
+  /** 用户端展示层汇率（1 USD → CNY）。传正数则金额按 ¥ 显示，缺省/非正数按 $ 显示（管理端默认）。 */
+  displayCnyRate?: number | null
 }>(), {
   loading: false,
   showAccountCost: true,
+  displayCnyRate: null,
 })
 
 const showAccountCost = computed(() => props.showAccountCost)
+
+// 金额展示前缀与换算：用户端传 displayCnyRate 显示 ¥（USD×汇率），管理端不传保持 $。
+const isCny = computed(
+  () => typeof props.displayCnyRate === 'number' && Number.isFinite(props.displayCnyRate) && props.displayCnyRate > 0
+)
+const money = (value: number | undefined | null): string => {
+  const usd = typeof value === 'number' && Number.isFinite(value) ? value : 0
+  return isCny.value ? `¥${formatCost(usd * (props.displayCnyRate as number))}` : `$${formatCost(usd)}`
+}
 
 const formatTokens = (value: number): string => {
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`

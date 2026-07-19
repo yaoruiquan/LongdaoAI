@@ -24,8 +24,8 @@
           </div>
           <div class="text-right">
             <p class="text-sm font-semibold">
-              <span class="text-green-600 dark:text-green-400" :title="t('dashboard.actual')">${{ formatCost(log.actual_cost) }}</span>
-              <span class="font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(log.total_cost) }}</span>
+              <span class="text-green-600 dark:text-green-400" :title="t('dashboard.actual')">{{ money(log.actual_cost) }}</span>
+              <span class="font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / {{ money(log.total_cost) }}</span>
             </p>
             <p class="text-xs text-gray-500 dark:text-dark-400">{{ (log.input_tokens + log.output_tokens).toLocaleString() }} tokens</p>
           </div>
@@ -45,7 +45,9 @@ import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateTime } from '@/utils/format'
+import { storeToRefs } from 'pinia'
+import { formatDateTime, formatCostDisplay } from '@/utils/format'
+import { useAppStore } from '@/stores/app'
 import type { UsageLog } from '@/types'
 
 defineProps<{
@@ -53,5 +55,9 @@ defineProps<{
   loading: boolean
 }>()
 const { t } = useI18n()
-const formatCost = (c: number) => c.toFixed(4)
+
+// 用户端消费金额按 ¥ 显示（USD×显示汇率），纯展示换算，不参与计费。保留 4 位小数避免小额归零。
+const appStore = useAppStore()
+const { balanceDisplayCnyRate } = storeToRefs(appStore)
+const money = (usd: number) => formatCostDisplay(usd, balanceDisplayCnyRate.value, 4)
 </script>

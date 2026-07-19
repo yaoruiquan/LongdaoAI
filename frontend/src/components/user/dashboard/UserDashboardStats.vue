@@ -54,13 +54,13 @@
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">
-            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatCost(stats?.today_actual_cost || 0) }}</span>
-            <span class="text-sm font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.today_cost || 0) }}</span>
+            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">{{ money(stats?.today_actual_cost || 0) }}</span>
+            <span class="text-sm font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / {{ money(stats?.today_cost || 0) }}</span>
           </p>
           <p class="text-xs">
             <span class="text-gray-500 dark:text-gray-400">{{ t('common.total') }}: </span>
-            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">${{ formatCost(stats?.total_actual_cost || 0) }}</span>
-            <span class="text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(stats?.total_cost || 0) }}</span>
+            <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">{{ money(stats?.total_actual_cost || 0) }}</span>
+            <span class="text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / {{ money(stats?.total_cost || 0) }}</span>
           </p>
         </div>
       </div>
@@ -156,13 +156,13 @@
             {{ item.isOther ? t('dashboard.platformOther') : platformLabel(item.platform) }}
           </span>
           <span class="font-mono text-sm text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">
-            ${{ formatCost(item.total_actual_cost) }}
+            {{ money(item.total_actual_cost) }}
           </span>
         </div>
         <div class="mt-2 space-y-1 text-xs">
           <div class="flex items-center justify-between">
             <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</span>
-            <span class="font-mono text-gray-900 dark:text-white">${{ formatCost(item.today_actual_cost) }}</span>
+            <span class="font-mono text-gray-900 dark:text-white">{{ money(item.today_actual_cost) }}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.requests') }}</span>
@@ -200,7 +200,7 @@
                 <div class="flex items-center justify-between text-xs">
                   <span class="text-gray-600 dark:text-gray-300">{{ t(`dashboard.platformQuota.${w}`) }}</span>
                   <span class="font-mono text-gray-700 dark:text-gray-200">
-                    ${{ formatUsd((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0) }} / ${{ formatUsd(quotaVal(item.quota, `${w}_limit_usd`) as number) }}
+                    {{ moneyQuota((quotaVal(item.quota, `${w}_usage_usd`) as number) ?? 0) }} / {{ moneyQuota(quotaVal(item.quota, `${w}_limit_usd`) as number) }}
                   </span>
                 </div>
                 <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
@@ -228,7 +228,7 @@ import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
-import { formatBalanceCNY } from '@/utils/format'
+import { formatBalanceCNY, formatCostDisplay } from '@/utils/format'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 import type { PlatformQuotaItem } from '@/types'
 
@@ -357,17 +357,6 @@ function quotaBarClass(p: number): string {
   return 'bg-green-500'
 }
 
-// 与 formatBalance 一致使用 Intl.NumberFormat 做半偶舍入，避免 toFixed 在不同 JS 引擎
-// 下偶发截断而非四舍五入（与后端展示精度不一致）。
-const usdFormatter = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-function formatUsd(n: number): string {
-  if (!Number.isFinite(n)) return '0.00'
-  return usdFormatter.format(n)
-}
-
 function formatResetTime(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -382,7 +371,10 @@ function formatResetTime(iso: string | null | undefined): string {
 }
 
 const formatNumber = (n: number) => n.toLocaleString()
-const formatCost = (c: number) => c.toFixed(4)
+// 用户端消费金额一律按 ¥ 显示（USD×显示汇率）。这是纯展示换算，不参与计费。
+// money：消费额保留 4 位小数避免小额归零；moneyQuota：配额/用量保留 2 位小数（与原 formatUsd 一致）。
+const money = (usd: number) => formatCostDisplay(usd, balanceDisplayCnyRate.value, 4)
+const moneyQuota = (usd: number) => formatCostDisplay(usd, balanceDisplayCnyRate.value, 2)
 const formatTokens = (t: number) => {
   if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`
   if (t >= 1000) return `${(t / 1000).toFixed(1)}K`

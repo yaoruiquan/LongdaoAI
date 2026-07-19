@@ -103,6 +103,33 @@ export function formatBalanceCNY(
 }
 
 /**
+ * 按显示汇率把「美元成本」渲染成货币字符串（用户端消费明细展示层）。
+ *
+ * 与 formatBalanceCNY 一致，这是纯展示换算，不参与任何计费/扣费逻辑；成本存储始终以美元为本位。
+ * 与余额不同的是消费金额通常很小，因此默认保留更多小数位，避免换算后显示为 0。
+ *
+ * 场景区分（共享组件用户端/管理端复用）：
+ *   - 传入正数 cnyRate  → 按 ¥ 显示（用户端调用处传 appStore.balanceDisplayCnyRate）
+ *   - cnyRate 缺省/非正数 → 按 $ 显示（管理端调用处不传，保持美元）
+ *
+ * @param usdCost 美元成本（存储值本位）
+ * @param cnyRate 显示汇率（1 USD = cnyRate CNY）。仅正数时才切换到 ¥ 显示
+ * @param fractionDigits 小数位数，默认 4（小额消费保留更多精度）
+ * @returns 形如 "¥0.0715" 或 "$0.010000" 的字符串
+ */
+export function formatCostDisplay(
+  usdCost: number | null | undefined,
+  cnyRate?: number | null,
+  fractionDigits: number = 4
+): string {
+  const usd = typeof usdCost === 'number' && Number.isFinite(usdCost) ? usdCost : 0
+  if (typeof cnyRate === 'number' && Number.isFinite(cnyRate) && cnyRate > 0) {
+    return `¥${(usd * cnyRate).toFixed(fractionDigits)}`
+  }
+  return `$${usd.toFixed(fractionDigits)}`
+}
+
+/**
  * 格式化字节大小
  * @param bytes 字节数
  * @param decimals 小数位数

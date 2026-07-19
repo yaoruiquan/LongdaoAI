@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
+      <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" :display-cny-rate="displayCnyRate" />
 
       <div class="space-y-4">
         <div class="card p-4">
@@ -34,6 +34,7 @@
             :show-account-cost="false"
             :start-date="startDate"
             :end-date="endDate"
+            :display-cny-rate="displayCnyRate"
           />
           <GroupDistributionChart
             v-model:metric="groupDistributionMetric"
@@ -44,6 +45,7 @@
             :show-account-cost="false"
             :start-date="startDate"
             :end-date="endDate"
+            :display-cny-rate="displayCnyRate"
           />
         </div>
 
@@ -61,8 +63,9 @@
             :title="t('usage.endpointDistribution')"
             :start-date="startDate"
             :end-date="endDate"
+            :display-cny-rate="displayCnyRate"
           />
-          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" :display-cny-rate="displayCnyRate" />
         </div>
       </div>
 
@@ -178,6 +181,7 @@
           :server-side-sort="true"
           :show-account-billing="false"
           :show-upstream-endpoint="false"
+          :display-cny-rate="displayCnyRate"
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
@@ -250,6 +254,10 @@ import { COMMON_ERROR_STATUS_CODES } from '@/utils/errorBadges'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+// 用户端消费明细/图表按人民币显示（1 USD → CNY，仅展示层换算，不参与计费）。
+// 传给共享组件（UsageTable/UsageStatsCards/各图表）；管理端调用处不传该 prop，保持美元。
+const displayCnyRate = computed(() => appStore.balanceDisplayCnyRate)
 
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
