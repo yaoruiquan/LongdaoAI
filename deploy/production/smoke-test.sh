@@ -42,9 +42,14 @@ http_code() {
     if [ -n "${BASE_URL}" ]; then
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${BASE_URL}${path}" || echo 000)"
     else
-        # 容器内 wget（busybox）：--server-response 输出到 stderr，抓 HTTP/ 状态码
+        # 容器内 wget（busybox）：-S 把响应头写到 stderr，抓 HTTP/ 状态码。
+        # 注意 busybox wget 两种输出格式都要覆盖：
+        #   2xx 成功：  "  HTTP/1.1 200 OK"                              → HTTP/ 在 $1
+        #   非 2xx  ：  "wget: server returned error: HTTP/1.1 404 ..."  → HTTP/ 在 $5
+        # 因此不能写死 $2（那样非 2xx 会取到 "server"），改为扫描字段定位
+        # 以 HTTP/ 开头的那个，取它的下一个字段；有重定向时自然取到最后一个状态码。
         code="$(compose exec -T "${SMOKE_SVC}" sh -c \
-            "wget -q -T 10 -O /dev/null -S 'http://localhost:8080${path}' 2>&1 | awk '/HTTP\\//{c=\$2} END{print c}'" \
+            "wget -q -T 10 -O /dev/null -S 'http://localhost:8080${path}' 2>&1 | awk '{for(i=1;i<=NF;i++) if(\$i ~ /^HTTP\\//) c=\$(i+1)} END{print c}'" \
             2>/dev/null || echo 000)"
         code="${code:-000}"
     fi
