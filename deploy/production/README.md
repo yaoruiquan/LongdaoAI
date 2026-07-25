@@ -80,10 +80,12 @@ git pull                              # 拉到蓝绿版本的 compose/Caddyfile/
 docker compose --profile green up -d sub2api-green
 docker compose --profile green ps sub2api-green      # 等其 healthy
 
-# 2) 重建 caddy 使其加载新的蓝绿双 upstream 配置
+# 2) 让 caddy 加载新的蓝绿双 upstream 配置
 #    （旧配置指向 sub2api:8080，新配置指向 sub2api-blue/green:8080）
-docker compose up -d caddy
-#    此步 caddy 会短暂重建（秒级）；确认 https://<域名>/health 正常后继续
+#    Caddyfile 是 bind mount，git pull 后文件已是新内容，热加载即可，无需重建容器：
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#    热加载不断开连接、零中断。确认 https://<域名>/health 正常后继续。
+#    （若 reload 报错，再退回重建：docker compose up -d caddy，秒级中断）
 
 # 3) 记录活跃色为 green
 echo green > .active_color
