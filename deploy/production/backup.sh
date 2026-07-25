@@ -15,9 +15,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_active.sh
+source "${SCRIPT_DIR}/_active.sh"   # 提供 compose()/env_val()/active_svc() 等
+
 # ---- 公共约定（可用环境变量覆盖）------------------------------------------
-COMPOSE_FILE="${COMPOSE_FILE:-deploy/production/docker-compose.yml}"
-ENV_FILE="${ENV_FILE:-deploy/production/.env}"
 BACKUP_DIR="${BACKUP_DIR:-deploy/production/backups}"
 ENVIRONMENT="${ENVIRONMENT:-prod}"
 KEEP="${KEEP:-14}"
@@ -25,18 +27,6 @@ KEEP="${KEEP:-14}"
 log()  { printf '\033[1;34m[backup]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
-
-compose() {
-    docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"
-}
-
-# 从 .env 读取一个键的值（去掉引号），$2 为默认值
-env_val() {
-    local key="$1" default="${2:-}"
-    local v
-    v="$(grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'"'"' ' || true)"
-    printf '%s' "${v:-$default}"
-}
 
 # ---- 前置检查 --------------------------------------------------------------
 if [ ! -f "${COMPOSE_FILE}" ]; then err "找不到 compose 文件：${COMPOSE_FILE}"; exit 1; fi
@@ -79,9 +69,11 @@ fi
 log "数据库备份完成：$(du -h "${PG_FILE}" | cut -f1)"
 
 # ---- 2) /app/data 备份（容器内 tar -> gzip）-------------------------------
-# 从 sub2api 容器内把 /app/data 打包输出到宿主机，避免依赖卷挂载路径。
-log "打包 /app/data -> ${DATA_FILE}"
-if ! compose exec -T sub2api tar -czf - -C /app data > "${DATA_FILE}"; then
+# 从当前活跃色容器内把 /app/data 打包输出到宿主机，避免依赖卷挂载路径。
+# blue/green 共用同一 sub2api_data 卷，取活跃色即可。
+BACKUP_SVC="$(active_svc)"
+log "打包 /app/data（来自 ${BACKUP_SVC}）-> ${DATA_FILE}"
+if ! compose exec -T "${BACKUP_SVC}" tar -czf - -C /app data > "${DATA_FILE}"; then
     err "/app/data 备份失败。"
     rm -f "${DATA_FILE}"
     exit 1

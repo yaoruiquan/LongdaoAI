@@ -23,122 +23,152 @@
 #   docker compose run --rm sub2api -migrate
 # =============================================================================
 
+# =============================================================================
+# 蓝绿部署（零中断发布）说明
+# =============================================================================
+# 应用拆成两个「颜色」实例 sub2api-blue / sub2api-green，共享同一份配置
+# （下方 x-sub2api-base 锚点）。平时只跑其中一个（用 compose profile 控制，
+# 2C4G 机器跑不起两个 1.5G 实例常驻）。发布时：
+#   1. 用新镜像拉起「非活跃色」实例，等它 healthy；
+#   2. Caddy 已同时把 blue/green 两个 service 列为 upstream，且 lb_policy first
+#      + 主动健康检查会自动只把流量发给健康实例，无需 reload；
+#   3. 停掉旧色实例（SIGTERM → 应用 60s 优雅 drain，见 stop_grace_period）。
+# 全程至少有一个健康实例在线，Caddy 自动摘除死掉的 upstream，实现零中断。
+# 切换编排见 switch.sh；活跃色记录在 .active_color。
+# =============================================================================
+
+# ---- 应用实例共享配置锚点（blue/green 复用，仅 container_name/profile 不同）----
+x-sub2api-base: &sub2api-base
+  # 固定自有版本化镜像。绝不使用 latest。
+  # IMAGE_TAG 用 :? 强制要求在 .env 中指定，缺失即报错，避免误部署。
+  image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?IMAGE_TAG is required（请在 .env 中指定，例如 v2026.07.15-1）}
+  restart: unless-stopped
+  # 优雅关闭窗口：必须 > 应用内 SHUTDOWN_TIMEOUT_SECONDS（60s），
+  # 否则 Docker 会先一步 SIGKILL，切断在途流式请求。留 90s 余量。
+  stop_grace_period: 90s
+  ulimits:
+    nofile:
+      soft: 100000
+      hard: 100000
+  # 生产不暴露端口：对外仅通过 caddy 容器经内部网络访问 sub2api-<color>:8080。
+  volumes:
+    # 数据持久化（config.yaml 会自动生成在此目录）。
+    # 注意：blue/green 共用同一数据卷；切换期短暂并存时对 /app/data 只读为主，
+    # 写入极少（业务真实状态在 PostgreSQL），并存窗口短，风险可接受。
+    - sub2api_data:/app/data
+    # 可选：挂载自定义 config.yaml（先创建文件再取消注释）
+    # - ./config.yaml:/app/data/config.yaml:ro
+  environment:
+    # ---- 自动初始化（Docker 部署必需）----
+    - AUTO_SETUP=true
+
+    # ---- 服务配置 ----
+    - SERVER_HOST=0.0.0.0
+    - SERVER_PORT=8080
+    # 生产默认 release 模式；非调试勿改为 debug。
+    - SERVER_MODE=${SERVER_MODE:-release}
+    - RUN_MODE=${RUN_MODE:-standard}
+    # 优雅关闭超时（秒）：与 stop_grace_period 配套，让在途流式请求 drain 完。
+    - SHUTDOWN_TIMEOUT_SECONDS=${SHUTDOWN_TIMEOUT_SECONDS:-60}
+
+    # ---- 数据库（PostgreSQL）----
+    - DATABASE_HOST=postgres
+    - DATABASE_PORT=5432
+    - DATABASE_USER=${POSTGRES_USER:-sub2api}
+    - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+    - DATABASE_SSLMODE=disable
+    - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
+    - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
+    - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+    - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+
+    # ---- Redis ----
+    # 生产环境 REDIS_PASSWORD 必填（用 :? 强制），避免内部网络内被未授权访问。
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required（生产必填）}
+    - REDIS_DB=${REDIS_DB:-0}
+    - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
+    - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
+    - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+    # ---- 管理员账号（首次运行自动创建）----
+    - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+    - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+
+    # ---- JWT ----
+    # 必须固定 JWT_SECRET，否则容器重启后登录态失效。生成：openssl rand -hex 32
+    - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required（openssl rand -hex 32）}
+    - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+    # ---- TOTP(2FA) ----
+    # 必须固定，否则重启后所有已配置 2FA 失效。生成：openssl rand -hex 32
+    - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required（openssl rand -hex 32）}
+
+    # ---- 时区（影响所有时间运算，含“今日”统计边界）----
+    - TZ=${TZ:-Asia/Shanghai}
+
+    # ---- Gemini OAuth（按需）----
+    - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
+    - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
+    - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
+    - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
+    - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
+    - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+
+    # ---- 安全（URL 白名单）----
+    - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+    - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+    - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
+    - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
+
+    # ---- 在线更新代理（访问 GitHub / 价格数据）----
+    - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - longdao-network
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+  deploy:
+    resources:
+      # compose v2（非 swarm）下 limits 生效；reservations 作为软预留。
+      limits:
+        cpus: "2.0"
+        memory: 1536M
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+
 services:
   # ===========================================================================
-  # 龙道 AI 应用（不对外暴露端口，仅经 caddy 访问）
+  # 龙道 AI 应用 · 蓝色实例（profile: blue）
   # ===========================================================================
-  sub2api:
-    # 固定自有版本化镜像。绝不使用 latest。
-    # IMAGE_TAG 用 :? 强制要求在 .env 中指定，缺失即报错，避免误部署。
-    image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?IMAGE_TAG is required（请在 .env 中指定，例如 v2026.07.15-1）}
-    container_name: longdao-sub2api
-    restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 100000
-        hard: 100000
-    # 生产不暴露端口：对外仅通过 caddy 容器经内部网络访问 sub2api:8080。
-    # 如需本地调试，可临时仅绑定回环地址（默认注释掉）：
-    # ports:
-    #   - "127.0.0.1:8080:8080"
-    volumes:
-      # 数据持久化（config.yaml 会自动生成在此目录）
-      - sub2api_data:/app/data
-      # 可选：挂载自定义 config.yaml（先创建文件再取消注释）
-      # - ./config.yaml:/app/data/config.yaml:ro
-    environment:
-      # ---- 自动初始化（Docker 部署必需）----
-      - AUTO_SETUP=true
+  sub2api-blue:
+    <<: *sub2api-base
+    container_name: longdao-sub2api-blue
+    profiles: ["blue"]
 
-      # ---- 服务配置 ----
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=8080
-      # 生产默认 release 模式；非调试勿改为 debug。
-      - SERVER_MODE=${SERVER_MODE:-release}
-      - RUN_MODE=${RUN_MODE:-standard}
-
-      # ---- 数据库（PostgreSQL）----
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_USER=${POSTGRES_USER:-sub2api}
-      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
-      - DATABASE_SSLMODE=disable
-      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
-      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
-      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
-      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
-
-      # ---- Redis ----
-      # 生产环境 REDIS_PASSWORD 必填（用 :? 强制），避免内部网络内被未授权访问。
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required（生产必填）}
-      - REDIS_DB=${REDIS_DB:-0}
-      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
-      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
-      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
-
-      # ---- 管理员账号（首次运行自动创建）----
-      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
-
-      # ---- JWT ----
-      # 必须固定 JWT_SECRET，否则容器重启后登录态失效。生成：openssl rand -hex 32
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required（openssl rand -hex 32）}
-      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
-
-      # ---- TOTP(2FA) ----
-      # 必须固定，否则重启后所有已配置 2FA 失效。生成：openssl rand -hex 32
-      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required（openssl rand -hex 32）}
-
-      # ---- 时区（影响所有时间运算，含“今日”统计边界）----
-      - TZ=${TZ:-Asia/Shanghai}
-
-      # ---- Gemini OAuth（按需）----
-      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
-      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
-      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
-      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
-      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
-      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
-
-      # ---- 安全（URL 白名单）----
-      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
-      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
-      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
-      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
-
-      # ---- 在线更新代理（访问 GitHub / 价格数据）----
-      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - longdao-network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "5"
-    deploy:
-      resources:
-        # compose v2（非 swarm）下 limits 生效；reservations 作为软预留。
-        # 按实际负载调整。应用是主要工作负载，给较高配额。
-        limits:
-          cpus: "2.0"
-          memory: 1536M
-        reservations:
-          cpus: "0.5"
-          memory: 512M
+  # ===========================================================================
+  # 龙道 AI 应用 · 绿色实例（profile: green）
+  # ===========================================================================
+  sub2api-green:
+    <<: *sub2api-base
+    container_name: longdao-sub2api-green
+    profiles: ["green"]
 
   # ===========================================================================
   # PostgreSQL 数据库（不映射宿主机端口，仅内部网络可达）
@@ -256,8 +286,11 @@ services:
       # Let's Encrypt 注册邮箱（用于证书到期通知，推荐设置）
       - LONGDAO_ACME_EMAIL=${LONGDAO_ACME_EMAIL:-}
       - TZ=${TZ:-Asia/Shanghai}
+    # 蓝绿部署下 caddy 不依赖任何特定颜色实例：切换期间某一色会被停掉，
+    # Caddy 通过主动健康检查 + lb_policy first 自动只把流量发给健康的 upstream。
+    # 若此处 depends_on 某个 sub2api-<color>，会因该色未起而阻塞 caddy 启动。
     depends_on:
-      sub2api:
+      postgres:
         condition: service_healthy
     networks:
       - longdao-network

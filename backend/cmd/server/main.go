@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -182,7 +183,23 @@ func runMainServer() {
 
 	log.Println("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 优雅关闭超时：作为 API 中转，绝大多数请求是长时流式响应（SSE / 逐 token）。
+	// Shutdown 会先停止接收新连接，再等待在途请求处理完成。超时给到 60s，
+	// 让在途流式请求有足够时间跑完，避免蓝绿/滚动部署时把流式响应硬切断。
+	// 注意：容器编排的 stop_grace_period 必须 > 此值（见 deploy/production/docker-compose.yml），
+	// 否则 Docker 会先一步 SIGKILL 进程，优雅关闭无从谈起。
+	// 可通过环境变量 SHUTDOWN_TIMEOUT_SECONDS 覆盖（默认 60）。
+	shutdownTimeout := 60 * time.Second
+	if v := os.Getenv("SHUTDOWN_TIMEOUT_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			shutdownTimeout = time.Duration(n) * time.Second
+		} else {
+			log.Printf("Invalid SHUTDOWN_TIMEOUT_SECONDS=%q, falling back to %s", v, shutdownTimeout)
+		}
+	}
+	log.Printf("Graceful shutdown timeout: %s", shutdownTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := app.Server.Shutdown(ctx); err != nil {
