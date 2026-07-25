@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import type { PaymentOrder } from '@/types/payment'
 import AdminOrderDetail from '../AdminOrderDetail.vue'
 import AdminOrderTable from '../AdminOrderTable.vue'
@@ -100,6 +101,7 @@ describe('admin order currency display', () => {
   })
 
   it('renders payment currency consistently in the shared order table', () => {
+    setActivePinia(createPinia())
     const wrapper = mount(OrderTable, {
       props: {
         orders: [
@@ -118,9 +120,11 @@ describe('admin order currency display', () => {
     })
 
     const text = wrapper.text()
+    // pay_amount follows order currency (unchanged)
     expect(text).toContain('$108.00')
     expect(text).toContain('¥108.00')
-    expect(text).toContain('$100.00')
+    // 龙道 AI 用户端：到账金额（USD 存储值）按显示汇率换算成 ¥（默认 7.15）
+    expect(text).toContain('¥715.00')
   })
 
   it('renders payment currency consistently in the admin order table', () => {

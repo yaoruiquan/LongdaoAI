@@ -75,6 +75,61 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
 }
 
 /**
+ * 余额显示汇率默认值（1 USD 展示为多少 CNY）。
+ * 与后端 service.DefaultBalanceDisplayCnyRate 保持一致，作为读取公开设置失败时的兜底。
+ */
+export const DEFAULT_BALANCE_DISPLAY_CNY_RATE = 7.15
+
+/**
+ * 将美元余额按显示汇率换算成人民币字符串（仅用于用户端展示层）。
+ *
+ * 注意：这是纯展示换算，不参与任何计费/扣费/充值逻辑。余额存储与计费始终以美元为本位，
+ * 此函数只把「美元数值 × 显示汇率」渲染成 ¥ 金额供用户查看。
+ *
+ * @param usdBalance 美元余额（存储值本位）
+ * @param rate 显示汇率（1 USD = rate CNY），非正数或缺省时回退到默认值
+ * @returns 形如 "¥71.50" 的字符串
+ */
+export function formatBalanceCNY(
+  usdBalance: number | null | undefined,
+  rate?: number | null
+): string {
+  const usd = typeof usdBalance === 'number' && Number.isFinite(usdBalance) ? usdBalance : 0
+  const effectiveRate =
+    typeof rate === 'number' && Number.isFinite(rate) && rate > 0
+      ? rate
+      : DEFAULT_BALANCE_DISPLAY_CNY_RATE
+  return `¥${(usd * effectiveRate).toFixed(2)}`
+}
+
+/**
+ * 按显示汇率把「美元成本」渲染成货币字符串（用户端消费明细展示层）。
+ *
+ * 与 formatBalanceCNY 一致，这是纯展示换算，不参与任何计费/扣费逻辑；成本存储始终以美元为本位。
+ * 与余额不同的是消费金额通常很小，因此默认保留更多小数位，避免换算后显示为 0。
+ *
+ * 场景区分（共享组件用户端/管理端复用）：
+ *   - 传入正数 cnyRate  → 按 ¥ 显示（用户端调用处传 appStore.balanceDisplayCnyRate）
+ *   - cnyRate 缺省/非正数 → 按 $ 显示（管理端调用处不传，保持美元）
+ *
+ * @param usdCost 美元成本（存储值本位）
+ * @param cnyRate 显示汇率（1 USD = cnyRate CNY）。仅正数时才切换到 ¥ 显示
+ * @param fractionDigits 小数位数，默认 4（小额消费保留更多精度）
+ * @returns 形如 "¥0.0715" 或 "$0.010000" 的字符串
+ */
+export function formatCostDisplay(
+  usdCost: number | null | undefined,
+  cnyRate?: number | null,
+  fractionDigits: number = 4
+): string {
+  const usd = typeof usdCost === 'number' && Number.isFinite(usdCost) ? usdCost : 0
+  if (typeof cnyRate === 'number' && Number.isFinite(cnyRate) && cnyRate > 0) {
+    return `¥${(usd * cnyRate).toFixed(fractionDigits)}`
+  }
+  return `$${usd.toFixed(fractionDigits)}`
+}
+
+/**
  * 格式化字节大小
  * @param bytes 字节数
  * @param decimals 小数位数

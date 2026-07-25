@@ -143,13 +143,13 @@
                   {{ formatTokens(model.total_tokens) }}
                 </td>
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                  ${{ formatCost(model.actual_cost) }}
+                  {{ money(model.actual_cost) }}
                 </td>
                 <td v-if="showAccountCost" class="py-1.5 text-right text-orange-500 dark:text-orange-400">
-                  ${{ formatCost(model.account_cost) }}
+                  {{ money(model.account_cost) }}
                 </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
-                  ${{ formatCost(model.cost) }}
+                  {{ money(model.cost) }}
                 </td>
               </tr>
               <tr v-if="expandedKey === `model-${model.model}`">
@@ -158,6 +158,7 @@
                     :items="breakdownItems"
                     :loading="breakdownLoading"
                     :show-account-cost="showAccountCost"
+                    :display-cny-rate="displayCnyRate"
                   />
                 </td>
               </tr>
@@ -226,7 +227,7 @@
                 {{ formatTokens(item.tokens) }}
               </td>
               <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                ${{ formatCost(item.actual_cost) }}
+                {{ money(item.actual_cost) }}
               </td>
             </tr>
           </tbody>
@@ -280,6 +281,8 @@ const props = withDefaults(defineProps<{
   startDate?: string
   endDate?: string
   filters?: Record<string, any>
+  /** 用户端展示层汇率（1 USD → CNY）。传正数则金额按 ¥ 显示，缺省/非正数按 $ 显示（管理端默认）。 */
+  displayCnyRate?: number | null
 }>(), {
   upstreamModelStats: () => [],
   mappingModelStats: () => [],
@@ -296,8 +299,24 @@ const props = withDefaults(defineProps<{
   enableBreakdown: true,
   showAccountCost: true,
   rankingLoading: false,
-  rankingError: false
+  rankingError: false,
+  displayCnyRate: null
 })
+
+// 金额展示前缀与换算：用户端传 displayCnyRate 显示 ¥（USD×汇率），管理端不传保持 $。
+const moneySymbol = computed(() =>
+  typeof props.displayCnyRate === 'number' && Number.isFinite(props.displayCnyRate) && props.displayCnyRate > 0
+    ? '¥'
+    : '$'
+)
+const toDisplayAmount = (usd: number): number => {
+  const rate = props.displayCnyRate
+  return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? usd * rate : usd
+}
+const money = (usd: number | null | undefined): string => {
+  const safe = toFiniteNumber(usd)
+  return `${moneySymbol.value}${formatCost(toDisplayAmount(safe))}`
+}
 
 const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
@@ -450,7 +469,7 @@ const doughnutOptions = computed(() => ({
           const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
           const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
           const formattedValue = props.metric === 'actual_cost'
-            ? `$${formatCost(value)}`
+            ? money(value)
             : formatTokens(value)
           return `${context.label}: ${formattedValue} (${percentage}%)`
         }
@@ -472,7 +491,7 @@ const rankingDoughnutOptions = computed(() => ({
           const value = context.raw as number
           const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
           const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
-          return `${context.label}: $${formatCost(value)} (${percentage}%)`
+          return `${context.label}: ${money(value)} (${percentage}%)`
         }
       }
     }

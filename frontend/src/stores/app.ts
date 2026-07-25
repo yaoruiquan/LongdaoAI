@@ -13,6 +13,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
+import { DEFAULT_BALANCE_DISPLAY_CNY_RATE } from '@/utils/format'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -51,6 +52,14 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+  // 余额显示汇率（1 USD → CNY）。仅用户端展示层使用，不参与计费。
+  // 未配置 / 非法 / 非正数时回退到 DEFAULT_BALANCE_DISPLAY_CNY_RATE。
+  const balanceDisplayCnyRate = computed<number>(() => {
+    const rate = cachedPublicSettings.value?.balance_display_cny_rate
+    return typeof rate === 'number' && Number.isFinite(rate) && rate > 0
+      ? rate
+      : DEFAULT_BALANCE_DISPLAY_CNY_RATE
+  })
 
   const loadingCount = ref<number>(0)
 
@@ -362,6 +371,7 @@ export const useAppStore = defineStore('app', () => {
         balance_low_notify_enabled: false,
         account_quota_notify_enabled: false,
         balance_low_notify_threshold: 0,
+        balance_display_cny_rate: DEFAULT_BALANCE_DISPLAY_CNY_RATE,
         channel_monitor_enabled: true,
         channel_monitor_default_interval_seconds: 60,
         available_channels_enabled: false,
@@ -455,6 +465,7 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    balanceDisplayCnyRate,
 
     // Actions
     toggleSidebar,

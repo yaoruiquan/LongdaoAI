@@ -49,10 +49,21 @@ ChartJS.register(
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   trendData: TrendDataPoint[]
   loading?: boolean
-}>()
+  /** 用户端展示层汇率（1 USD → CNY）。传正数则金额按 ¥ 显示，缺省/非正数按 $ 显示（管理端默认）。 */
+  displayCnyRate?: number | null
+}>(), {
+  loading: false,
+  displayCnyRate: null,
+})
+
+// 金额展示前缀与换算：用户端传 displayCnyRate 显示 ¥（USD×汇率），管理端不传保持 $。
+const isCny = () =>
+  typeof props.displayCnyRate === 'number' && Number.isFinite(props.displayCnyRate) && props.displayCnyRate > 0
+const money = (usd: number): string =>
+  isCny() ? `¥${formatCost(usd * (props.displayCnyRate as number))}` : `$${formatCost(usd)}`
 
 const isDarkMode = computed(() => {
   return document.documentElement.classList.contains('dark')
@@ -155,7 +166,7 @@ const lineOptions = computed(() => ({
           const dataIndex = tooltipItems[0]?.dataIndex
           if (dataIndex !== undefined && props.trendData[dataIndex]) {
             const data = props.trendData[dataIndex]
-            return `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
+            return `Actual: ${money(data.actual_cost)} | Standard: ${money(data.cost)}`
           }
           return ''
         }

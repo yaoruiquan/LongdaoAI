@@ -24,25 +24,22 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_active.sh
+source "${SCRIPT_DIR}/_active.sh"   # 提供 compose()/env_val()/active_svc()/inactive_svc() 等
 
-# ---- 公共约定（可用环境变量覆盖）------------------------------------------
-COMPOSE_FILE="${COMPOSE_FILE:-deploy/production/docker-compose.yml}"
-ENV_FILE="${ENV_FILE:-deploy/production/.env}"
 IMAGE_REPO="${IMAGE_REPO:-longdao/sub2api}"
 DEPLOY_LOG="${DEPLOY_LOG:-deploy/production/deploy.log}"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
-HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 
 log()  { printf '\033[1;34m[rollback]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
 
-record() { printf '%s\n' "$1" >> "${DEPLOY_LOG}"; }
+record() { mkdir -p "$(dirname "${DEPLOY_LOG}")"; printf '%s\n' "$1" >> "${DEPLOY_LOG}"; }
 
 # ---- 参数与前置检查 --------------------------------------------------------
 ROLLBACK_TAG="${1:-}"
 if [ -z "${ROLLBACK_TAG}" ]; then
-    err "用法：$0 <要回滚到的镜像版本 tag，例如 2026.07.15-1>"
+    err "用法：$0 <要回滚到的镜像版本 tag，例如 v2026.07.16-1>"
     exit 1
 fi
 [ -f "${COMPOSE_FILE}" ] || { err "找不到 compose 文件：${COMPOSE_FILE}"; exit 1; }
@@ -51,15 +48,11 @@ fi
 TARGET_IMAGE="${IMAGE_REPO}:${ROLLBACK_TAG}"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
-# 用 IMAGE_TAG 覆盖变量执行 compose（不改 .env）
-compose() {
-    IMAGE_TAG="${ROLLBACK_TAG}" docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"
-}
-
 log "=============================================================="
-log " 龙道 AI 回滚开始"
-log "   目标镜像 : ${TARGET_IMAGE}"
-log "   数据卷   : 不会被删除或重建（仅切换应用镜像）"
+log " 龙道 AI 回滚开始（蓝绿零中断）"
+log "   目标镜像   : ${TARGET_IMAGE}"
+log "   当前活跃色 : $(active_color)  →  回滚部署到: $(inactive_color)"
+log "   数据卷     : 不会被删除或重建（仅切换应用镜像）"
 log "=============================================================="
 
 # 检查目标镜像存在
@@ -70,39 +63,30 @@ if ! docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
     exit 1
 fi
 
-mkdir -p "$(dirname "${DEPLOY_LOG}")"
 record "$(date -u +%Y-%m-%dT%H:%M:%SZ) ROLLBACK START tag=${ROLLBACK_TAG} commit=${COMMIT}"
 
-# ---- 切换镜像并重启（仅 sub2api，不动数据卷）------------------------------
-log "以 IMAGE_TAG=${ROLLBACK_TAG} 重新拉起 sub2api ..."
-if ! compose up -d sub2api; then
-    err "compose up -d 失败。"
-    record "$(date -u +%Y-%m-%dT%H:%M:%SZ) ROLLBACK FAILED tag=${ROLLBACK_TAG} reason=\"compose up failed\""
+# ---- 迁移说明（OPS-002 前向修复原则）--------------------------------------
+# 回滚仅切换应用镜像，不自动回退数据库结构。若上一次发布含「不兼容迁移」
+# （删列/改类型等），仅切镜像可能无法工作，需先 restore.sh 从发布前备份恢复
+# 数据库，再执行本回滚。请谨慎评估。
+warn "注意：本回滚不回退数据库结构（前向修复）。若上次发布含不兼容迁移，"
+warn "      请先用 restore.sh 恢复数据库，再回滚镜像。"
+
+# ---- 用旧 tag 走蓝绿切换（部署到目标色并放量，零中断）--------------------
+# 通过导出 IMAGE_TAG 覆盖 .env，switch.sh 会用该旧 tag 拉起目标色 → 健康 →
+# 冒烟 → 放量 → 停旧色。全程至少一个健康实例在线。
+log "以 IMAGE_TAG=${ROLLBACK_TAG} 走蓝绿切换回滚 ..."
+if ! IMAGE_TAG="${ROLLBACK_TAG}" \
+        COMPOSE_FILE="${COMPOSE_FILE}" ENV_FILE="${ENV_FILE}" DEPLOY_LOG="${DEPLOY_LOG}" \
+        bash "${SCRIPT_DIR}/switch.sh"; then
+    END_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    record "${END_TS} ROLLBACK FAILED tag=${ROLLBACK_TAG} commit=${COMMIT} reason=\"switch failed\""
+    err "回滚切换失败。现网仍由原活跃色提供服务，请人工介入。"
+    err "（若涉及不兼容迁移，需先 restore.sh 恢复数据库再重试。）"
     exit 1
 fi
-
-# ---- 健康检查 --------------------------------------------------------------
-log "健康检查（超时 ${HEALTH_TIMEOUT}s）..."
-deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
-healthy=0
-while [ "$(date +%s)" -lt "${deadline}" ]; do
-    status="$(compose ps --format '{{.Health}}' sub2api 2>/dev/null | head -n1 || true)"
-    if [ "${status}" = "healthy" ]; then healthy=1; break; fi
-    if compose exec -T sub2api wget -q -T 5 -O /dev/null "http://localhost:8080/health" >/dev/null 2>&1; then
-        healthy=1; break
-    fi
-    sleep "${HEALTH_INTERVAL}"
-done
 
 END_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-if [ "${healthy}" -ne 1 ]; then
-    err "回滚后健康检查失败，最近日志："
-    compose logs --tail=50 sub2api >&2 || true
-    record "${END_TS} ROLLBACK FAILED tag=${ROLLBACK_TAG} commit=${COMMIT} reason=\"health check failed\""
-    err "回滚后服务仍不健康，请人工介入（可能涉及不兼容迁移，需先 restore.sh 恢复数据库）。"
-    exit 1
-fi
-
 record "${END_TS} ROLLBACK SUCCESS tag=${ROLLBACK_TAG} commit=${COMMIT} result=ok"
 log "=============================================================="
 log " 回滚成功  已切回版本=${ROLLBACK_TAG}  时间=${END_TS}"

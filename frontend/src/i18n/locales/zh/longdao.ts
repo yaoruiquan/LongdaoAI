@@ -82,7 +82,7 @@ export default {
     viewDetails: '查看订阅详情',
     unnamedPlan: '未命名套餐',
     subscriptionActive: '订阅已生效',
-    monthlyQuota: '月度额度（USD 源额度）',
+    monthlyQuota: '月度额度',
     multiplier: '计费倍率',
     noSubscription: '暂无有效订阅',
     noSubscriptionDesc: '支付后端接入后，可在套餐中心完成真实购买。',

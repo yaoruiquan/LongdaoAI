@@ -7,18 +7,25 @@
 - PostgreSQL / Redis 均不映射宿主机端口，只在内部网络可达。
 - 每个服务都加了 CPU/内存限制与日志轮转，防止资源与磁盘被打爆。
 - Caddy 自动签发 Let's Encrypt 证书，HTTP 自动跳转 HTTPS。
+- **蓝绿部署（零中断发布）**：应用拆为 `sub2api-blue` / `sub2api-green` 两色实例，
+  发布时先起新色、健康+冒烟通过后再切流、最后停旧色，全程至少一个健康实例在线。
+  配合应用侧优雅关闭（SIGTERM → 60s drain 在途流式请求），实现不断流升级。
 
 ## 目录内容
 
 | 文件 | 说明 |
 |------|------|
-| `docker-compose.yml` | 生产 compose：`sub2api` / `postgres` / `redis` / `caddy` 四服务 |
+| `docker-compose.yml` | 生产 compose：`sub2api-blue`/`sub2api-green`（蓝绿）+ `postgres` / `redis` / `caddy` |
+| `Caddyfile` | 容器化 Caddy 反向代理（HTTPS + 流式友好 + 蓝绿双 upstream 主动健康检查） |
 | `.env.example` | 环境变量模板（只含占位符，复制为 `.env` 后填真实值） |
-| `Caddyfile` | 容器化 Caddy 反向代理配置（HTTPS + 流式友好） |
+| `_active.sh` | 蓝绿共享辅助（被其他脚本 source；维护 `.active_color` 活跃色状态） |
+| `deploy.sh` | 一键发布编排：检查 → 备份 → 迁移 → 蓝绿切换 → 记录 |
+| `switch.sh` | 蓝绿切换核心：起目标色 → 健康 → 冒烟 → 放量 → 停旧色 |
+| `rollback.sh` | 零中断回滚：用旧 tag 部署到目标色并蓝绿切换 |
+| `migrate.sh` / `backup.sh` / `restore.sh` | 迁移 / 备份 / 恢复运维脚本 |
+| `smoke-test.sh` | 发布后冒烟（P0 健康/首页/注册策略） |
+| `.active_color` | （运行时产物，不入库）当前活跃色 `blue`/`green` |
 | `README.md` | 本文档 |
-
-> `migrate.sh` / `backup.sh` / `restore.sh` / `deploy.sh` 等运维脚本由发布流程提供，
-> 与本清单约定的接口保持一致（见文末“运维脚本接口约定”）。
 
 ## 前置条件
 
@@ -39,14 +46,16 @@ cp .env.example .env
 #          ADMIN_EMAIL、ADMIN_PASSWORD、JWT_SECRET、TOTP_ENCRYPTION_KEY
 #   随机密钥用：openssl rand -hex 32
 
-# 2) 校验配置（缺任何必填项都会在此报错）
-docker compose config -q
+# 2) 校验配置（缺任何必填项都会在此报错；蓝绿需带两色 profile）
+docker compose --profile blue --profile green config -q
 
-# 3) 启动
-docker compose up -d
+# 3) 首次启动（引导）：起共享服务 + 首个活跃色 blue
+docker compose up -d postgres redis caddy
+docker compose --profile blue up -d sub2api-blue
+echo blue > .active_color        # 记录当前活跃色（switch.sh 之后会自动维护）
 
 # 4) 观察日志
-docker compose logs -f sub2api caddy
+docker compose logs -f sub2api-blue caddy
 
 # 5) 访问
 #    https://<你的 LONGDAO_DOMAIN>
@@ -54,6 +63,42 @@ docker compose logs -f sub2api caddy
 
 首次启动时 `AUTO_SETUP=true` 会自动建表并创建管理员账号（用 `.env` 里的 `ADMIN_EMAIL` /
 `ADMIN_PASSWORD`）。登录后请尽快修改初始密码。
+
+> **注意**：蓝绿下不要用裸 `docker compose up -d`——它会同时拉起 blue 和 green 两个实例。
+> 平时只跑一个活跃色；日常发布一律走 `deploy.sh`（内部调 `switch.sh` 自动在两色间切换）。
+
+## 首次从旧单实例迁移到蓝绿（一次性，重要）
+
+若服务器此前跑的是旧单实例容器（service `sub2api`，容器名 `longdao-sub2api`），
+升级到本蓝绿版本时需要一次手动切换（之后就全走 `deploy.sh`）：
+
+```bash
+cd deploy/production
+git pull                              # 拉到蓝绿版本的 compose/Caddyfile/脚本
+
+# 1) 拉起绿色实例（新版本），与旧单实例暂时并存（都健康、都在内网）
+docker compose --profile green up -d sub2api-green
+docker compose --profile green ps sub2api-green      # 等其 healthy
+
+# 2) 让 caddy 加载新的蓝绿双 upstream 配置
+#    （旧配置指向 sub2api:8080，新配置指向 sub2api-blue/green:8080）
+#    Caddyfile 是 bind mount，git pull 后文件已是新内容，热加载即可，无需重建容器：
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#    热加载不断开连接、零中断。确认 https://<域名>/health 正常后继续。
+#    （若 reload 报错，再退回重建：docker compose up -d caddy，秒级中断）
+
+# 3) 记录活跃色为 green
+echo green > .active_color
+
+# 4) 停掉并移除旧单实例孤儿容器（它已不被 Caddy 路由，但仍挂着数据卷）
+docker stop longdao-sub2api && docker rm longdao-sub2api
+
+# 之后日常发布：改 .env 的 IMAGE_TAG → ./deploy.sh（会自动切到 blue，再往后蓝绿交替）
+```
+
+> 迁移期 green 与旧单实例会短暂共用 `longdao_sub2api_data` 卷。业务真实状态在
+> PostgreSQL，`/app/data` 主要是自动生成的 `config.yaml`，并存窗口短、风险可接受。
+> 完成第 4 步后即恢复单实例占用。
 
 ## 如何填写 .env
 
@@ -77,38 +122,62 @@ docker compose logs -f sub2api caddy
 ## 起停与常用命令
 
 ```bash
-# 启动 / 后台运行
-docker compose up -d
+# 查看当前活跃色
+cat .active_color
 
-# 停止（保留数据卷）
-docker compose down
+# 查看状态与健康（两色都列出；平时只有活跃色在跑）
+docker compose --profile blue --profile green ps
+
+# 观察活跃色日志（把 <color> 换成 blue/green）
+docker compose logs -f sub2api-<color> caddy
+
+# 停止全部（保留数据卷）
+docker compose --profile blue --profile green down
 
 # 停止并删除数据卷（危险：清空数据库/缓存/证书，谨慎）
-# docker compose down -v
-
-# 查看状态与健康
-docker compose ps
-
-# 拉取新版本镜像并滚动更新（改 .env 的 IMAGE_TAG 后）
-docker compose pull sub2api && docker compose up -d sub2api
+# docker compose --profile blue --profile green down -v
 
 # 单独重启反代
 docker compose restart caddy
 ```
 
+## 发布与回滚（蓝绿零中断）
+
+**日常发布**：改好 `.env` 的 `IMAGE_TAG`（新版本），然后一键：
+
+```bash
+./deploy.sh
+#   内部顺序：检查 .env/镜像 → 备份 → 迁移(目标色) → switch.sh(起目标色→健康→冒烟→放量→停旧色) → 记录
+#   KEEP_OLD=1 ./deploy.sh   # 切完保留旧色（便于快速回退），需之后手动停旧色
+```
+
+**只切换不走完整发布**（例如镜像已就位）：
+
+```bash
+./switch.sh                  # 切到另一色，用 .env 当前 IMAGE_TAG
+OBSERVE_SECONDS=15 ./switch.sh
+```
+
+**回滚**（零中断，用旧 tag 部署到目标色再切）：
+
+```bash
+./rollback.sh v2026.07.16-1  # 回滚到指定历史版本 tag
+#   若上次发布含不兼容迁移（删列/改类型），先 restore.sh 恢复数据库再回滚。
+```
+
 ## 数据库迁移
 
 后端提供独立迁移命令 `sub2api -migrate`，与应用启动解耦：**先迁移成功，再放量新版本**。
+`deploy.sh` 已在切换前自动调用 `migrate.sh`。手动执行（用一次性容器，`--rm` 不残留）：
 
 ```bash
-# 用一次性容器执行迁移（--rm 不残留容器）
-docker compose run --rm sub2api -migrate
-# 等价写法（entrypoint 会在参数为 flag 时自动补上 /app/sub2api）：
-# docker compose run --rm sub2api /app/sub2api -migrate
+# 对目标色（即将上线的非活跃色）执行迁移；MIGRATE_SVC 可覆盖
+./migrate.sh
+# 或直接指定某色：
+# docker compose --profile green run --rm sub2api-green /app/sub2api -migrate
 ```
 
-迁移返回非零退出码即失败,此时不要启动新版本应用,排查后重跑。发布脚本 `migrate.sh`
-已封装该流程。
+迁移返回非零退出码即失败,此时不要放量新版本,排查后重跑。
 
 ## 网络边界说明（重要）
 
@@ -117,18 +186,20 @@ docker compose run --rm sub2api -migrate
         │  仅 80 / 443
         ▼
    ┌─────────┐   longdao-network (bridge, 内部)
-   │  caddy  │───────────────────────────────┐
-   └─────────┘                                │
-        │ reverse_proxy sub2api:8080          │
-        ▼                                     │
-   ┌─────────┐      ┌──────────┐      ┌───────────┐
-   │ sub2api │──────│ postgres │      │   redis   │
-   └─────────┘      └──────────┘      └───────────┘
-   （无对外端口）    （无对外端口）      （无对外端口）
+   │  caddy  │──────────────────────────────────────┐
+   └─────────┘  reverse_proxy 双 upstream            │
+        │  sub2api-blue:8080  sub2api-green:8080     │
+        │  (lb_policy first + 主动健康检查)          │
+        ▼         ▼                                  │
+   ┌────────────┐ ┌────────────┐  ┌──────────┐  ┌───────────┐
+   │sub2api-blue│ │sub2api-green│  │ postgres │  │   redis   │
+   └────────────┘ └────────────┘  └──────────┘  └───────────┘
+     （平时只跑活跃色一个；发布切换时短暂并存）
+   （均无对外端口）                （无对外端口）   （无对外端口）
 ```
 
-- **唯一对公网开放的是 caddy 的 80/443。** `sub2api`、`postgres`、`redis` 都不映射宿主机端口。
-- 应用只能经 Caddy 访问,内网服务间通过服务名（`postgres` / `redis` / `sub2api`）互连。
+- **唯一对公网开放的是 caddy 的 80/443。** 两色应用、`postgres`、`redis` 都不映射宿主机端口。
+- 应用只能经 Caddy 访问,内网服务间通过服务名（`postgres` / `redis` / `sub2api-blue` / `sub2api-green`）互连。
 - 需要临时调试内网服务时,可在对应服务临时加 `ports: ["127.0.0.1:<port>:<port>"]`
   （仅绑定回环,调试完移除),相关注释已写在 compose 文件里。
 
@@ -165,15 +236,17 @@ Caddy 反代已设置 `flush_interval -1`,逐块立即刷新、不缓冲,保证 
 |--------|-----|
 | Compose 文件路径 | `deploy/production/docker-compose.yml` |
 | 环境文件路径 | `deploy/production/.env`(真实值,不进仓库) |
-| 应用服务名 | `sub2api` |
+| 应用服务名（蓝绿） | `sub2api-blue` / `sub2api-green`（compose profile 同名 blue/green） |
+| 活跃色状态文件 | `deploy/production/.active_color`（运行时产物，`_active.sh` 维护） |
 | 数据库服务名 / 卷 | `postgres` / `longdao_postgres_data` |
 | 缓存服务名 / 卷 | `redis` / `longdao_redis_data` |
 | 反代服务名 / 卷 | `caddy` / `longdao_caddy_data`、`longdao_caddy_config`、`longdao_caddy_logs` |
-| 应用数据卷 | `longdao_sub2api_data` |
+| 应用数据卷（两色共用） | `longdao_sub2api_data` |
 | 内部网络名 | `longdao-network` |
 | 镜像变量 | `IMAGE_REPO`(默认 `longdao/sub2api`)+ `IMAGE_TAG`(必填,禁止 latest) |
-| 迁移调用 | `docker compose run --rm sub2api -migrate`(先迁移成功再放量) |
+| 迁移调用 | `./migrate.sh`（对目标色一次性容器；先迁移成功再放量） |
+| 优雅关闭 | 应用 `SHUTDOWN_TIMEOUT_SECONDS=60` + 容器 `stop_grace_period=90s` |
 | 对外端口 | 仅 caddy 的 `80` / `443` |
 
-标准发布顺序建议:`docker compose pull sub2api` → `migrate.sh`(迁移成功)→
-`docker compose up -d`。回滚:把 `.env` 的 `IMAGE_TAG` 换回上一个版本再 `up -d`,切勿依赖 latest。
+标准发布：改 `.env` 的 `IMAGE_TAG` → `./deploy.sh`（内部：备份 → 迁移 → 蓝绿切换）。
+回滚：`./rollback.sh <旧版本tag>`（零中断，用旧 tag 部署到目标色再切）。切勿依赖 latest。

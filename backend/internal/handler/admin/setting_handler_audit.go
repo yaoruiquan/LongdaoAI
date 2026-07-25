@@ -495,6 +495,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.BalanceLowNotifyThreshold != after.BalanceLowNotifyThreshold {
 		changed = append(changed, "balance_low_notify_threshold")
 	}
+	if before.BalanceDisplayCnyRate != after.BalanceDisplayCnyRate {
+		changed = append(changed, "balance_display_cny_rate")
+	}
 	if before.BalanceLowNotifyRechargeURL != after.BalanceLowNotifyRechargeURL {
 		changed = append(changed, "balance_low_notify_recharge_url")
 	}

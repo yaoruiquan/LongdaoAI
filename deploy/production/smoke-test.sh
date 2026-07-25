@@ -15,28 +15,21 @@
 
 set -euo pipefail
 
-# ---- 公共约定（可用环境变量覆盖）------------------------------------------
-COMPOSE_FILE="${COMPOSE_FILE:-deploy/production/docker-compose.yml}"
-ENV_FILE="${ENV_FILE:-deploy/production/.env}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_active.sh
+source "${SCRIPT_DIR}/_active.sh"   # 提供 compose()/env_val()/active_svc()/inactive_svc()
+
 ENVIRONMENT="${ENVIRONMENT:-prod}"
 # BASE_URL 为空 => 容器内直连；非空 => 用 curl 打外部地址（经 caddy）
 BASE_URL="${BASE_URL:-}"
+# 容器内直连时用哪个色的容器。默认活跃色；switch.sh 切换前会用 SMOKE_SVC
+# 指定「即将上线的目标色」，以便在放量前就地验证新实例。
+SMOKE_SVC="${SMOKE_SVC:-$(active_svc)}"
 
 log()  { printf '\033[1;34m[smoke]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
 todo() { printf '\033[1;36m[TODO]\033[0m %s\n' "$*"; }
-
-compose() {
-    docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"
-}
-
-env_val() {
-    local key="$1" default="${2:-}"
-    local v
-    v="$(grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'"'"' ' || true)"
-    printf '%s' "${v:-$default}"
-}
 
 IMAGE_TAG="$(env_val IMAGE_TAG unknown 2>/dev/null || echo unknown)"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -50,7 +43,7 @@ http_code() {
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${BASE_URL}${path}" || echo 000)"
     else
         # 容器内 wget（busybox）：--server-response 输出到 stderr，抓 HTTP/ 状态码
-        code="$(compose exec -T sub2api sh -c \
+        code="$(compose exec -T "${SMOKE_SVC}" sh -c \
             "wget -q -T 10 -O /dev/null -S 'http://localhost:8080${path}' 2>&1 | awk '/HTTP\\//{c=\$2} END{print c}'" \
             2>/dev/null || echo 000)"
         code="${code:-000}"
@@ -63,7 +56,7 @@ http_body() {
     if [ -n "${BASE_URL}" ]; then
         curl -s --max-time 10 "${BASE_URL}${path}" || true
     else
-        compose exec -T sub2api sh -c "wget -q -T 10 -O - 'http://localhost:8080${path}'" 2>/dev/null || true
+        compose exec -T "${SMOKE_SVC}" sh -c "wget -q -T 10 -O - 'http://localhost:8080${path}'" 2>/dev/null || true
     fi
 }
 
@@ -75,7 +68,7 @@ log " 冒烟测试开始"
 log "   环境   : ${ENVIRONMENT}"
 log "   版本   : ${IMAGE_TAG}"
 log "   时间   : ${NOW}"
-log "   目标   : ${BASE_URL:-容器内 http://localhost:8080}"
+log "   目标   : ${BASE_URL:-容器内 ${SMOKE_SVC}:8080}"
 log "=============================================================="
 
 # ---- P0-1: /health 返回 200（必测）----------------------------------------

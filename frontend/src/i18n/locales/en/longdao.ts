@@ -82,7 +82,7 @@ export default {
     viewDetails: 'View subscription details',
     unnamedPlan: 'Unnamed plan',
     subscriptionActive: 'Subscription active',
-    monthlyQuota: 'Monthly quota (USD source quota)',
+    monthlyQuota: 'Monthly quota',
     multiplier: 'Billing multiplier',
     noSubscription: 'No active subscription',
     noSubscriptionDesc: 'Real plan purchases will become available after payment backend integration.',

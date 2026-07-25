@@ -38,36 +38,38 @@
    至少包含：`IMAGE_TAG`、`POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`JWT_SECRET`、
    `TOTP_ENCRYPTION_KEY` 等。`IMAGE_TAG` 必须显式指向不可变 tag，切勿用 `latest`。
 
-## 标准发布流程（deploy.sh）
+## 标准发布流程（deploy.sh，蓝绿零中断）
 
 编排顺序，任一步失败即停止并提示回滚：
 
 1. 检查 `.env` 存在、`IMAGE_TAG` 已设置。
 2. 检查目标镜像存在（`docker image inspect`），不存在提示先构建。
 3. **发布前备份**（调用 `backup.sh`）。
-4. **执行迁移**（调用 `migrate.sh`）；失败则中止，**不启动新版本**。
-5. `docker compose up -d`。
-6. 健康检查：轮询容器 health 或容器内 `/health`，超时判失败。
-7. 冒烟测试（`smoke-test.sh`）。
-8. 记录结果到 `deploy.log`。
+4. **执行迁移**（调用 `migrate.sh`，对目标色一次性容器）；失败则中止，**不放量**。
+5. **蓝绿切换**（调用 `switch.sh`）：拉起目标色 → 等健康 → 容器内冒烟 →
+   Caddy 主动健康检查放量 → 停旧色（SIGTERM，应用 60s 优雅 drain 在途流式请求）。
+   全程至少一个健康实例在线，**零中断**。
+6. 记录结果到 `deploy.log`。
 
 ```bash
 # 发布（先在 .env 里设置好目标 IMAGE_TAG）
 ./deploy/production/deploy.sh
+# 切完保留旧色以便快速回退（之后需手动 stop 旧色）：
+# KEEP_OLD=1 ./deploy/production/deploy.sh
 ```
 
-失败时按提示运行回滚。
+失败时切换脚本会自动回滚（停掉未就绪/未通过冒烟的目标色，现网继续由旧色提供服务）。
 
-## 回滚流程（rollback.sh）
+## 回滚流程（rollback.sh，蓝绿零中断）
 
 ```bash
 # 回滚到上一个不可变版本
-./deploy/production/rollback.sh 2026.07.15-1
+./deploy/production/rollback.sh v2026.07.16-1
 ```
 
-- 仅切换 `sub2api` 应用镜像（通过 `IMAGE_TAG=<旧版本>` 覆盖变量执行 `up -d`），
-  **不修改 `.env`**，**绝不删除或重建 postgres/redis 数据卷**。
-- 回滚后自动健康检查。
+- 用旧 `IMAGE_TAG` 走蓝绿切换：把旧版本部署到**目标色**并放量、再停当前色，
+  **不修改 `.env`**，**绝不删除或重建 postgres/redis 数据卷**，全程零中断。
+- 切换中自动健康检查 + 冒烟；不通过则保持现网不变并报错。
 - **迁移与回滚关系**：迁移默认「前向修复」，回滚只切应用镜像，不回退数据库结构。
   若上次发布含**不兼容迁移**（删列/改类型等），仅切镜像可能失败，
   需先用 `restore.sh` 从发布前备份恢复数据库，再切镜像。

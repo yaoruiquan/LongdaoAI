@@ -41,19 +41,34 @@
 	}
 
 	# =========================================================================
-	# 反向代理到应用容器（内部网络服务名 sub2api:8080）
+	# 反向代理到应用容器（蓝绿双 upstream，内部网络）
 	# =========================================================================
-	reverse_proxy sub2api:8080 {
-		# ---- 健康检查 ----
+	# 同时列出 blue/green 两个实例。lb_policy first = 按顺序选第一个「健康」的，
+	# 配合主动健康检查（health_uri /health），实现零中断蓝绿切换：
+	#   - 平时只跑一个色，另一色 DNS 不可达 / 探活失败 → 被标记 unhealthy，
+	#     流量只走在线的那个；
+	#   - 切换时新色先起来变 healthy，再停旧色，Caddy 3s 内探测到旧色 down
+	#     并自动摘除，全程至少一个健康 upstream 在线。
+	# 说明：平时那一色未运行时，健康检查会周期性产生 dial 失败日志（属预期噪声，
+	#      不影响流量）。切换脚本见 deploy/production/switch.sh。
+	reverse_proxy sub2api-blue:8080 sub2api-green:8080 {
+		# ---- 健康检查（主动）----
+		# 间隔调到 3s，让新色上线 / 旧色下线都能被快速探测到，缩短切换窗口。
 		health_uri /health
-		health_interval 30s
-		health_timeout 10s
+		health_interval 3s
+		health_timeout 2s
 		health_status 200
 
-		# ---- 负载均衡（单节点无副作用，多节点时有用）----
-		lb_policy round_robin
+		# ---- 负载均衡：first = 优先第一个健康 upstream（蓝绿关键）----
+		# 与 round_robin 不同：只要靠前的健康就一直用它，不会在两色间轮流，
+		# 保证切换是「整体从旧色迁到新色」而非请求级混发。
+		lb_policy first
 		lb_try_duration 5s
 		lb_try_interval 250ms
+
+		# ---- 被动健康检查：连接失败即临时摘除，配合主动检查更快失败转移 ----
+		fail_duration 10s
+		max_fails 1
 
 		# ---- 流式响应关键：禁用缓冲，逐块立即 flush 给客户端 ----
 		# -1 表示每次写入立即刷新，保证 SSE / 逐 token 流式实时返回，
@@ -84,9 +99,7 @@
 			compression off
 		}
 
-		# ---- 故障转移 ----
-		fail_duration 30s
-		max_fails 3
+		# ---- 上游返回这些状态码时也视为该实例不健康，触发转移 ----
 		unhealthy_status 500 502 503 504
 	}
 
