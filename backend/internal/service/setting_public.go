@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -217,6 +218,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBalanceLowNotifyThreshold,
 		SettingKeyBalanceLowNotifyRechargeURL,
 		SettingKeyBalanceDisplayCnyRate,
+		SettingBalanceRechargeMult,
 		SettingKeyAccountQuotaNotifyEnabled,
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
@@ -281,7 +283,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		balanceLowNotifyThreshold = v
 	}
 
-	balanceDisplayCnyRate := parseBalanceDisplayCnyRate(settings[SettingKeyBalanceDisplayCnyRate])
+	balanceDisplayCnyRate := deriveBalanceDisplayCnyRate(
+		settings[SettingBalanceRechargeMult],
+		settings[SettingKeyBalanceDisplayCnyRate],
+	)
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -353,6 +358,17 @@ func parseBalanceDisplayCnyRate(raw string) float64 {
 		return DefaultBalanceDisplayCnyRate
 	}
 	return v
+}
+
+// deriveBalanceDisplayCnyRate 优先从充值倍率自动推导显示汇率（1/multiplier），
+// 保证两者始终一致，管理员无需手动维护两个字段。
+// 若倍率未设置或无效，回退到存储的 display rate，再回退到默认值。
+func deriveBalanceDisplayCnyRate(rawMultiplier, rawDisplayRate string) float64 {
+	if m, err := strconv.ParseFloat(strings.TrimSpace(rawMultiplier), 64); err == nil && m > 0 {
+		// 保留 2 位小数，例如 1/0.14 = 7.142857 → 7.14
+		return math.Round((1.0/m)*100) / 100
+	}
+	return parseBalanceDisplayCnyRate(rawDisplayRate)
 }
 
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
