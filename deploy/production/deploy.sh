@@ -65,23 +65,23 @@ mkdir -p "$(dirname "${DEPLOY_LOG}")"
 record "$(date -u +%Y-%m-%dT%H:%M:%SZ) DEPLOY START tag=${IMAGE_TAG} commit=${COMMIT}"
 
 # ---- 2. 检查目标镜像存在 ---------------------------------------------------
-log "[2/8] 检查目标镜像存在：${TARGET_IMAGE}"
+log "[2/6] 检查目标镜像存在：${TARGET_IMAGE}"
 if ! docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
     abort "本地找不到镜像 ${TARGET_IMAGE}。请先构建：deploy/build_production_image.sh ${IMAGE_TAG}（或 docker pull）"
 fi
 
 # ---- 3. 发布前备份 ---------------------------------------------------------
 if [ "${SKIP_BACKUP:-0}" = "1" ]; then
-    warn "[3/8] SKIP_BACKUP=1，跳过发布前备份（不推荐）。"
+    warn "[3/6] SKIP_BACKUP=1，跳过发布前备份（不推荐）。"
 else
-    log "[3/8] 发布前备份 ..."
+    log "[3/6] 发布前备份 ..."
     if ! COMPOSE_FILE="${COMPOSE_FILE}" ENV_FILE="${ENV_FILE}" bash "${SCRIPT_DIR}/backup.sh"; then
         abort "发布前备份失败，中止发布。"
     fi
 fi
 
 # ---- 4. 执行迁移（失败则中止，不启动新版本）------------------------------
-log "[4/8] 执行数据库迁移 ..."
+log "[4/6] 执行数据库迁移 ..."
 if ! COMPOSE_FILE="${COMPOSE_FILE}" ENV_FILE="${ENV_FILE}" bash "${SCRIPT_DIR}/migrate.sh"; then
     abort "数据库迁移失败，按 spec 硬要求不启动新版本。"
 fi
