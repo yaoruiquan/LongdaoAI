@@ -93,9 +93,36 @@ log "   commit     : ${COMMIT}"
 log "=============================================================="
 record "$(date -u +%Y-%m-%dT%H:%M:%SZ) SWITCH START ${CUR_COLOR}->${TARGET_COLOR} tag=${IMAGE_TAG} commit=${COMMIT}"
 
-# ---- 1. 确保共享服务在线（postgres/redis/caddy）---------------------------
-log "[1/6] 确保共享服务在线（postgres / redis / caddy）..."
-compose up -d postgres redis caddy
+# ---- 1. 确保共享服务在线；强制重建 caddy 使其加载最新 Caddyfile ----------------
+# 注意：caddy reload 在内部 config 应用失败时会悄悄回滚旧配置，退出码仍 0，
+# 无法可靠判断是否生效。因此每次切换都 --force-recreate caddy（≈4s 中断），
+# 确保新 Caddyfile（双 upstream blue/green）一定生效，避免 reload 回滚后
+# 非活跃色删掉导致唯一 upstream 失联 → 503。
+log "[1/6] 确保共享服务在线；强制重建 caddy 加载最新配置..."
+compose up -d postgres redis
+compose up -d --force-recreate caddy
+
+# 等 caddy 健康（admin API 可用）
+log "  等待 caddy 就绪..."
+caddy_deadline=$(( $(date +%s) + 30 ))
+while [ "$(date +%s)" -lt "${caddy_deadline}" ]; do
+    if compose exec -T caddy wget -q -T 3 -O /dev/null "http://127.0.0.1:2019/config/" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# 验证 Caddy 真的加载了双 upstream 配置（blue 和 green 都应出现）
+log "  验证 caddy 已加载双 upstream 配置..."
+upstreams="$(compose exec -T caddy wget -qO- "http://127.0.0.1:2019/reverse_proxy/upstreams" 2>/dev/null || true)"
+if ! printf '%s' "${upstreams}" | grep -q "sub2api-blue" || \
+   ! printf '%s' "${upstreams}" | grep -q "sub2api-green"; then
+    err "caddy 加载的配置不含双 upstream（实际：${upstreams}）"
+    err "请检查 deploy/production/Caddyfile 是否已更新到蓝绿版本，并确认 git pull 已拉到最新。"
+    record "$(date -u +%Y-%m-%dT%H:%M:%SZ) SWITCH FAILED reason=\"caddy config mismatch\""
+    exit 1
+fi
+log "  caddy 配置正确：${upstreams}"
 
 # ---- 2. 拉起目标色（用新 IMAGE_TAG）---------------------------------------
 log "[2/6] 拉起目标色实例 ${TARGET_SVC}（IMAGE_TAG=${IMAGE_TAG}）..."
