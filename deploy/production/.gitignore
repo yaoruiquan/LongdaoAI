@@ -1,5 +1,15 @@
 # 运行时/本机产物，不进仓库
-.env                 # 生产真实密钥，绝不入库
-.active_color        # 蓝绿当前活跃色状态（运行时由 switch.sh 维护）
-deploy.log           # 发布/回滚流水日志
-backups/             # 本地备份产物
+# 注意：gitignore 不支持行尾注释（# 只有在行首才是注释），
+# 所以每条模式必须独占一行，注释单独成行。
+
+# 生产真实密钥，绝不入库
+.env
+
+# 蓝绿当前活跃色状态（运行时由 switch.sh 维护）
+.active_color
+
+# 发布/回滚流水日志
+deploy.log
+
+# 本地备份产物
+backups/
