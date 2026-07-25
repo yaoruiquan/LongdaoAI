@@ -53,7 +53,11 @@
 	#      不影响流量）。切换脚本见 deploy/production/switch.sh。
 	reverse_proxy sub2api-blue:8080 sub2api-green:8080 {
 		# ---- 健康检查（主动）----
-		# 间隔调到 3s，让新色上线 / 旧色下线都能被快速探测到，缩短切换窗口。
+		# 间隔必须远小于 switch.sh 的观察窗口（OBSERVE_SECONDS，默认 10s）：
+		# 停旧色前 Caddy 必须已探测到新色健康，否则两色都被判不可用 → 503。
+		# 3s 间隔保证观察窗口内至少探测 3 次。
+		# 代价：平时非活跃色不存在，会每 3s 打一条 DNS 查不到的 INFO 日志。
+		# 这是预期噪声（日志已配 roll），不要为消噪把间隔调大。
 		health_uri /health
 		health_interval 3s
 		health_timeout 2s
