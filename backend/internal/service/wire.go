@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"database/sql"
-	"log/slog"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -270,13 +269,6 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
-	svc.Start()
-	return svc
-}
-
-// ProvideAccountRecoveryService creates and starts AccountRecoveryService.
-func ProvideAccountRecoveryService(client *dbent.Client) *AccountRecoveryService {
-	svc := NewAccountRecoveryService(client, slog.Default())
 	svc.Start()
 	return svc
 }
@@ -726,7 +718,6 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
-	ProvideAccountRecoveryService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
