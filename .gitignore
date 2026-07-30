@@ -131,25 +131,10 @@ backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
-docs/*
-!docs/PAYMENT.md
-!docs/PAYMENT_CN.md
-!docs/ADMIN_PAYMENT_INTEGRATION_API.md
-!docs/ASYNC_IMAGE_TASKS.md
-!docs/legal/
-!docs/legal/*.md
+# 文档目录（仅本地保留，不推送到远程）
+docs/
 .serena/
 .codex/
 frontend/coverage/
 aicodex
 output/
-!docs/TOKEN_RELAY_CUSTOMIZATION_ROADMAP.md
-!docs/SERVER_DEPLOYMENT_READINESS.md
-!docs/specs/
-!docs/specs/*.md
-!docs/plans/
-!docs/plans/*.md
-!docs/搭建AI中转站指南.md
-!docs/龙道AI服务器部署实录.md
-!docs/knowledge-base/
-!docs/knowledge-base/*.md
