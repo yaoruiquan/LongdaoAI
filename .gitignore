@@ -132,7 +132,11 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 # 文档目录（仅本地保留，不推送到远程）
+# 例外：docs/legal/ 被 Dockerfile:41 COPY 进镜像，且前端
+# AdminComplianceDialog.vue 用 ?raw 内联这两个 md，构建必需。
 docs/
+!docs/legal/
+!docs/legal/*.md
 .serena/
 .codex/
 frontend/coverage/
