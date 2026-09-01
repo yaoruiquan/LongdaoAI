@@ -18,6 +18,11 @@ func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
 	return containsModelNotFoundKeyword(normalized)
 }
 
+func isUpstreamModelNotAllowedError(statusCode int, body []byte) bool {
+	return statusCode == http.StatusForbidden &&
+		strings.EqualFold(extractUpstreamErrorCode(body), "model_not_allowed")
+}
+
 func isModelNotFoundError(statusCode int, body []byte) bool {
 	return isUpstreamModelNotFoundError(statusCode, body) || statusCode == http.StatusNotFound
 }

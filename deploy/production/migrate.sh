@@ -52,9 +52,10 @@ log "   迁移容器 : ${MIGRATE_SVC}（一次性 --rm）"
 log "   开始时间 : ${START_TS}"
 log "=============================================================="
 
-# 用一次性容器执行独立迁移命令；--rm 保证不残留容器。
+# 用一次性容器执行独立迁移命令；--no-deps 防止 Compose 隐式启动共享
+# PostgreSQL/Redis，--rm 保证不残留容器。
 # sub2api -migrate 失败会返回非零退出码，set -e 会让本脚本随之失败。
-if compose run --rm "${MIGRATE_SVC}" /app/sub2api -migrate; then
+if compose run --no-deps --rm "${MIGRATE_SVC}" /app/sub2api -migrate; then
     END_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     log "=============================================================="
     log " 迁移成功  版本=${IMAGE_TAG}  结束时间=${END_TS}"

@@ -2006,6 +2006,8 @@ func parseOpenAIImageTryAgainCooldown(body []byte) time.Duration {
 
 const upstreamModelNotFoundCooldown = 30 * time.Minute
 const upstreamModelNotFoundReason = "upstream_404_model_not_found"
+const upstreamModelNotAllowedCooldown = 30 * time.Minute
+const upstreamModelNotAllowedReason = "upstream_403_model_not_allowed"
 const upstreamCodexPlanGatedModelCooldown = 30 * time.Minute
 const upstreamCodexPlanGatedModelReason = "upstream_400_codex_plan_gated_model"
 const tempUnschedBodyMaxBytes = 64 << 10
@@ -2013,8 +2015,8 @@ const tempUnschedMessageMaxBytes = 2048
 
 // HandleUpstreamModelNotFound marks the requested model as temporarily
 // unavailable on the account when the upstream deterministically reports it
-// cannot serve that model: a 404 model-not-found, or the Codex 400 rejecting a
-// plan-gated model on a ChatGPT OAuth account. Returning true tells the caller
+// cannot serve that model: a 404 model-not-found, a 403 model-not-allowed, or
+// the Codex 400 rejecting a plan-gated model on a ChatGPT OAuth account. Returning true tells the caller
 // to fail the current attempt over to another account; the scheduler skips the
 // (account, model) pair via IsSchedulableForModelWithContext until the
 // cooldown expires, instead of re-selecting an account that can never serve
@@ -2029,6 +2031,8 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	var cooldown time.Duration
 	var reason string
 	switch {
+	case account.Platform == PlatformOpenAI && isUpstreamModelNotAllowedError(statusCode, responseBody):
+		cooldown, reason = upstreamModelNotAllowedCooldown, upstreamModelNotAllowedReason
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
