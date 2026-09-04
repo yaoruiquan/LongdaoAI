@@ -15,23 +15,77 @@ type openAIImageOutputCounter struct {
 	dataSizes    []string
 	count        int
 	maxDataCount int
+
+	// 文本形态的图片输出：部分第三方聚合上游对同一个图片模型不返回官方的
+	// output[].result，而是把 markdown 图片直接塞进 output_text。原有的
+	// addImageOutputItem 认不出来，会让图片退化成按 token 计费。
+	// 只有响应自报的 model 是图片模型时才计入（imageModelSeen），
+	// 否则普通模型回答里的 markdown 图片链接会被误判成生成图。
+	textScanner    *openAIChatImageScanner
+	imageModelSeen bool
 }
 
 func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
 	return &openAIImageOutputCounter{
-		seen:      make(map[string]struct{}),
-		seenSizes: make(map[string]string),
+		seen:        make(map[string]struct{}),
+		seenSizes:   make(map[string]string),
+		textScanner: newOpenAIChatImageScanner(),
 	}
+}
+
+// noteResponseModel 记录响应自报的模型，用于决定是否采信文本里的图片引用。
+func (c *openAIImageOutputCounter) noteResponseModel(model string) {
+	if c == nil || c.imageModelSeen {
+		return
+	}
+	if IsGPTImageGenerationModel(model) {
+		c.imageModelSeen = true
+	}
+}
+
+// textImageCount 返回文本形态识别到的图片数（未确认图片模型时恒为 0）。
+func (c *openAIImageOutputCounter) textImageCount() int {
+	if c == nil || !c.imageModelSeen || c.textScanner == nil {
+		return 0
+	}
+	return c.textScanner.Count()
+}
+
+func (c *openAIImageOutputCounter) textImageSizes() []string {
+	if c == nil || !c.imageModelSeen || c.textScanner == nil {
+		return nil
+	}
+	return c.textScanner.Sizes()
+}
+
+// addResponsesOutputText 把 Responses 输出里的文本喂给文本扫描器。
+func (c *openAIImageOutputCounter) addResponsesOutputText(output gjson.Result) {
+	if c == nil || c.textScanner == nil || !output.IsArray() {
+		return
+	}
+	output.ForEach(func(_, item gjson.Result) bool {
+		item.Get("content").ForEach(func(_, part gjson.Result) bool {
+			if text := part.Get("text"); text.Type == gjson.String {
+				c.textScanner.FeedText(text.String())
+			}
+			return true
+		})
+		return true
+	})
 }
 
 func (c *openAIImageOutputCounter) Count() int {
 	if c == nil {
 		return 0
 	}
-	if c.maxDataCount > c.count {
-		return c.maxDataCount
+	count := c.count
+	if c.maxDataCount > count {
+		count = c.maxDataCount
 	}
-	return c.count
+	if textCount := c.textImageCount(); textCount > count {
+		count = textCount
+	}
+	return count
 }
 
 func (c *openAIImageOutputCounter) Sizes() []string {
@@ -48,6 +102,9 @@ func (c *openAIImageOutputCounter) Sizes() []string {
 		sizes = append(sizes, c.dataSizes...)
 	}
 	if len(sizes) == 0 {
+		sizes = append(sizes, c.textImageSizes()...)
+	}
+	if len(sizes) == 0 {
 		return nil
 	}
 	return sizes
@@ -57,9 +114,14 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	if c == nil || len(body) == 0 || !gjson.ValidBytes(body) {
 		return
 	}
-	c.addDataArray(gjson.GetBytes(body, "data"))
-	c.addOutputArray(gjson.GetBytes(body, "output"))
-	c.addOutputArray(gjson.GetBytes(body, "response.output"))
+	root := gjson.ParseBytes(body)
+	c.addDataArray(root.Get("data"))
+	c.addOutputArray(root.Get("output"))
+	c.addOutputArray(root.Get("response.output"))
+	c.noteResponseModel(root.Get("model").String())
+	c.noteResponseModel(root.Get("response.model").String())
+	c.addResponsesOutputText(root.Get("output"))
+	c.addResponsesOutputText(root.Get("response.output"))
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
@@ -68,12 +130,20 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 	}
 	root := gjson.ParseBytes(data)
 	c.addDataArray(root.Get("data"))
+	c.noteResponseModel(root.Get("model").String())
+	c.noteResponseModel(root.Get("response.model").String())
 	eventType := strings.TrimSpace(root.Get("type").String())
+	if eventType == "response.output_text.delta" {
+		if delta := root.Get("delta"); delta.Type == gjson.String && c.textScanner != nil {
+			c.textScanner.FeedText(delta.String())
+		}
+	}
 	switch eventType {
 	case "response.output_item.done":
 		c.addImageOutputItem(root.Get("item"))
 	case "response.completed", "response.done":
 		c.addOutputArray(root.Get("response.output"))
+		c.addResponsesOutputText(root.Get("response.output"))
 	case "image_generation.completed":
 		if item := root.Get("item"); item.Exists() {
 			c.addImageOutputItem(item)

@@ -113,3 +113,49 @@ func splitEvery(s string, n int) []string {
 	}
 	return out
 }
+
+// 第三方聚合上游对同一个图片模型可能返回两种形状：官方的 output[].result，
+// 或把 markdown 图片塞进 output_text。后者必须也算成一张图，否则会退化成按 token 计费。
+func TestOpenAIImageOutputCounter_ResponsesOutputTextMarkdown(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse([]byte(`{"model":"gpt-image-2","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"![generated](https://pic.example/p/img/abc.png)"}]}]}`))
+
+	require.Equal(t, 1, counter.Count())
+}
+
+func TestOpenAIImageOutputCounter_ResponsesOutputTextInlineBase64(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse([]byte(`{"model":"gpt-image-2","output":[{"type":"message","content":[{"type":"output_text","text":"![img](data:image/png;base64,` + tinyPNGBase64 + `)"}]}]}`))
+
+	require.Equal(t, 1, counter.Count())
+	require.Equal(t, []string{"7x3"}, counter.Sizes())
+}
+
+// 普通文本模型的回答里出现 markdown 图片链接是正常内容，不能当成生成图计费。
+func TestOpenAIImageOutputCounter_NonImageModelTextIsNotBilled(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse([]byte(`{"model":"gpt-5.6","output":[{"type":"message","content":[{"type":"output_text","text":"文档里可以这样写：![logo](https://example.com/logo.png)"}]}]}`))
+
+	require.Zero(t, counter.Count())
+	require.Nil(t, counter.Sizes())
+}
+
+func TestOpenAIImageOutputCounter_StreamingOutputTextDelta(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEData([]byte(`{"type":"response.created","response":{"model":"gpt-image-2","status":"in_progress"}}`))
+	content := "![img](data:image/png;base64," + tinyPNGBase64 + ")"
+	for _, piece := range splitEvery(content, 9) {
+		counter.AddSSEData([]byte(`{"type":"response.output_text.delta","delta":` + jsonQuote(piece) + `}`))
+	}
+
+	require.Equal(t, 1, counter.Count())
+	require.Equal(t, []string{"7x3"}, counter.Sizes())
+}
+
+// 官方 output[].result 形状仍按原逻辑计数，不受文本扫描影响。
+func TestOpenAIImageOutputCounter_OfficialResultShapeStillCounted(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse([]byte(`{"model":"gpt-image-2","output":[{"type":"image_generation_call","id":"ig_1","result":"` + tinyPNGBase64 + `"}]}`))
+
+	require.Equal(t, 1, counter.Count())
+}
