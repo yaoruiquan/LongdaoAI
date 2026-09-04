@@ -87,7 +87,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// 入口分流：APIKey 账号 + 强制或已探测确认上游不支持 Responses，走 CC 直转。
 	// 自动模式下标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	//
+	// 图片模型（gpt-image-*）无条件走 CC 直转：CC→Responses 转换会把 model 改写成主文本
+	// 模型（见 normalizeOpenAIResponsesImageOnlyModel），而第三方聚合上游是把图片模型
+	// 直接挂在 /v1/chat/completions 上的，直转才能原样拿到内联 base64 图片。
+	if account.Type == AccountTypeAPIKey &&
+		(!openai_compat.ShouldUseResponsesAPI(account.Extra) ||
+			IsGPTImageGenerationModel(gjson.GetBytes(body, "model").String())) {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 

@@ -259,6 +259,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientOutputStarted := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+	// 图片模型才开扫描器，普通聊天流不付这份开销。
+	var imageScanner *openAIChatImageScanner
+	if isRawChatImageModel(originalModel, billingModel, upstreamModel) {
+		imageScanner = newOpenAIChatImageScanner()
+	}
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -301,6 +306,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+				}
+				if imageScanner != nil {
+					imageScanner.AddSSEData([]byte(payload))
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
@@ -351,7 +359,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:       requestID,
 		Usage:           usage,
 		Model:           originalModel,
@@ -362,7 +370,12 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		Stream:          true,
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
-	}, nil
+	}
+	if imageScanner != nil {
+		result.ImageCount = imageScanner.Count()
+		result.ImageOutputSizes = imageScanner.Sizes()
+	}
+	return result, nil
 }
 
 // ensureOpenAIChatStreamUsage 确保 raw Chat Completions 流式请求会让上游返回 usage。
@@ -427,6 +440,12 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		usage = parsedUsage
 	}
 
+	// 图片模型：CC 直转的图片藏在 message.content 的 markdown（或非标准 image_urls）里，
+	// 不识别出张数就会退化成按 token 计费（见 calculateRecordUsageCost）。
+	imageCount, imageOutputSizes := scanRawChatCompletionsImages(originalModel, billingModel, upstreamModel, func(scanner *openAIChatImageScanner) {
+		scanner.AddJSON(respBody)
+	})
+
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
@@ -439,15 +458,17 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	_, _ = c.Writer.Write(respBody)
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:        requestID,
+		Usage:            usage,
+		Model:            originalModel,
+		BillingModel:     billingModel,
+		UpstreamModel:    upstreamModel,
+		ReasoningEffort:  reasoningEffort,
+		ServiceTier:      serviceTier,
+		Stream:           false,
+		Duration:         time.Since(startTime),
+		ImageCount:       imageCount,
+		ImageOutputSizes: imageOutputSizes,
 	}, nil
 }
 

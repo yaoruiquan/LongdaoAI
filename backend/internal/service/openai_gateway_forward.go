@@ -292,6 +292,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if decodeErr != nil {
 			return nil, decodeErr
 		}
+		imageModelPassthrough := account.ResponsesImageModelPassthroughEnabled()
 		if codexImageGenerationBridgeEnabled && ensureOpenAIResponsesImageGenerationTool(decoded) {
 			markDecodedModified()
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
@@ -304,17 +305,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			markDecodedModified()
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
 		}
-		if normalizeOpenAIResponsesImageOnlyModel(decoded) {
+		if normalizeOpenAIResponsesImageOnlyModel(decoded, imageModelPassthrough) {
 			markDecodedModified()
 			if model, ok := decoded["model"].(string); ok {
 				upstreamModel = strings.TrimSpace(model)
 			}
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image-only model request inbound_model=%s image_model=%s upstream_model=%s", requestView.Model, billingModel, upstreamModel)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image-only model request inbound_model=%s image_model=%s upstream_model=%s passthrough=%v", requestView.Model, billingModel, upstreamModel, imageModelPassthrough)
 		}
-		if err := validateOpenAIResponsesImageModel(decoded, upstreamModel); err != nil {
-			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error(), "param": "model"}})
-			return nil, err
+		// 透传模式下 model 本身就是图片模型，"图片模型不得携带 image_generation 工具"
+		// 这条官方约束不适用，跳过校验。
+		if !imageModelPassthrough {
+			if err := validateOpenAIResponsesImageModel(decoded, upstreamModel); err != nil {
+				setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error(), "param": "model"}})
+				return nil, err
+			}
 		}
 		if hasOpenAIImageGenerationTool(decoded) {
 			imageIntent = true
