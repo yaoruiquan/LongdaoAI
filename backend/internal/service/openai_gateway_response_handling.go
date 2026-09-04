@@ -451,6 +451,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				data = string(normalizedData)
 				line = "data: " + data
 			}
+			if normalizedData, normalized := normalizeResponsesUsageTokenDetails(dataBytes); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				line = "data: " + data
+			}
 			imageCounter.AddSSEData(dataBytes)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
@@ -1124,6 +1129,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	// 与流式同理：补齐 usage 明细字段，避免强类型客户端反序列化失败。
+	if normalizedBody, normalized := normalizeResponsesUsageTokenDetails(body); normalized {
+		body = normalizedBody
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1213,6 +1222,10 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if contentType == "" {
 			contentType = "text/event-stream"
 		}
+	}
+	// 与流式同理：补齐 usage 明细字段，避免强类型客户端反序列化失败。
+	if normalizedBody, normalized := normalizeResponsesUsageTokenDetails(body); normalized {
+		body = normalizedBody
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
@@ -1354,6 +1367,50 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 		return finalResponse, true
 	}
 	return nil, false
+}
+
+// normalizeResponsesUsageTokenDetails 补齐 Responses usage 里的官方明细字段。
+//
+// 背景：Codex 用强类型反序列化 response.completed —— input_tokens_details 必须有
+// cached_tokens、output_tokens_details 必须有 reasoning_tokens。第三方聚合上游在
+// 图片请求上只回 image_tokens / text_tokens，缺这两个字段会让 Codex 报
+// "failed to parse ResponseCompleted: missing field `cached_tokens`"，把整段流当成
+// 中断并重试 5 次，用户侧表现为「一直重连、最终失败」。
+//
+// 这里只在明细对象已存在而缺字段时按 0 补齐，不改动任何已有数值，
+// 因此不影响计费（计费读的是 input_tokens / output_tokens 及各类明细原值）。
+func normalizeResponsesUsageTokenDetails(data []byte) ([]byte, bool) {
+	if len(data) == 0 || !gjson.ValidBytes(data) {
+		return data, false
+	}
+	out := data
+	changed := false
+	for _, usagePath := range []string{"usage", "response.usage"} {
+		usage := gjson.GetBytes(out, usagePath)
+		if !usage.Exists() || !usage.IsObject() {
+			continue
+		}
+		for detailPath, field := range map[string]string{
+			"input_tokens_details":  "cached_tokens",
+			"output_tokens_details": "reasoning_tokens",
+		} {
+			details := usage.Get(detailPath)
+			if !details.Exists() || !details.IsObject() {
+				continue
+			}
+			if details.Get(field).Exists() {
+				continue
+			}
+			updated, err := sjson.SetBytes(out, usagePath+"."+detailPath+"."+field, 0)
+			if err != nil {
+				continue
+			}
+			out = updated
+			changed = true
+			usage = gjson.GetBytes(out, usagePath)
+		}
+	}
+	return out, changed
 }
 
 func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {
