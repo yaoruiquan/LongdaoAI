@@ -131,7 +131,12 @@ x-sub2api-base: &sub2api-base
     redis:
       condition: service_healthy
   networks:
-    - longdao-network
+    longdao-network:
+      # 颜色中立别名：同实例其它应用（SEP 等）调中转时用 http://sub2api:8080，
+      # 不要写死 longdao-sub2api-blue —— 蓝绿切换会把那个颜色停掉，写死就断。
+      # 两色都声明同一别名，切换并存窗口内解析到任一健康实例都可用。
+      aliases:
+        - sub2api
   healthcheck:
     test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
     interval: 30s
@@ -277,6 +282,9 @@ services:
       # - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 同实例其它站点的独立配置（见 Caddyfile 末尾的 import）。目录挂载，
+      # 新增站点只需往 conf.d 放文件 + reload，不必重建容器。
+      - ./conf.d:/etc/caddy/conf.d:ro
       - caddy_data:/data           # ACME 证书与账户（务必持久化，避免频繁重签触发 LE 限流）
       - caddy_config:/config       # Caddy 自动生成的运行时配置
       - caddy_logs:/var/log/caddy  # 访问日志（json + roll）

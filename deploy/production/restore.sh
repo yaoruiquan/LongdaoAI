@@ -58,6 +58,24 @@ if [ "${TARGET_DB}" = "${PROD_DB}" ]; then
     IS_PROD_TARGET="1"
 fi
 
+# ---- 目标库归属校验（共享 PostgreSQL 实例保护）------------------------------
+# 这台 postgres 同时承载别的应用（SEP 的 sep_prod 等）。非生产目标会被 DROP 重建，
+# 一旦 TARGET_DB 传错就是删别人的库，而 FORCE=1 会跳过所有交互确认——所以这道校验
+# 必须无条件执行，不受 FORCE 影响。
+# 允许的目标：本应用生产库本身，或以 "<生产库>_" 开头的派生库（restore_test 等）。
+case "${TARGET_DB}" in
+    "${PROD_DB}"|"${PROD_DB}"_*) ;;
+    *)
+        if [ "${ALLOW_FOREIGN_TARGET_DB:-0}" != "1" ]; then
+            err "目标库「${TARGET_DB}」不属于本应用（生产库：${PROD_DB}）。"
+            err "共享实例上还有其它应用的库，拒绝对其执行 DROP/恢复。"
+            err "确实要跨库恢复请显式设置 ALLOW_FOREIGN_TARGET_DB=1 重试。"
+            exit 1
+        fi
+        warn "ALLOW_FOREIGN_TARGET_DB=1：目标库「${TARGET_DB}」不属于本应用，仍继续。"
+        ;;
+esac
+
 # ---- 危险操作确认 ----------------------------------------------------------
 warn "=============================================================="
 warn " 恢复操作（高危！会覆盖目标库全部数据）"

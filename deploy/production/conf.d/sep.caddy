@@ -1,0 +1,56 @@
+# =============================================================================
+# SEP 硅基人才平台（longdaoSEP.cn）
+# =============================================================================
+# 这个站点跟龙道 AI 共用同一个 Caddy 实例（80/443 只有一份，拆两个容器会端口冲突），
+# 但配置独立成文件，避免两件事：
+#   1. 站点配置只活在服务器磁盘上、不进 git（重装即丢，且让 build_production_image.sh
+#      的 REL-002 干净工作区检查永远失败）；
+#   2. SEP 发版时 sed 改主 Caddyfile —— 两个应用的发布流程互相踩同一个文件。
+#
+# SEP 的蓝绿切换由 /opt/sep/app/deploy/production/sep-deploy.sh 改写下方 reverse_proxy
+# 的上游主机名完成（sep-blue-web ↔ sep-green-web）。因此该脚本必须指到本文件：
+#   SEP_CADDYFILE=/opt/longdao/deploy/production/conf.d/sep.caddy
+# 主 Caddyfile 通过 `import /etc/caddy/conf.d/*.caddy` 引入本文件。
+# =============================================================================
+longdaoSEP.cn {
+	tls {$LONGDAO_ACME_EMAIL} {
+		protocols tls1.2 tls1.3
+	}
+
+	reverse_proxy sep-green-web:3000 {
+		flush_interval -1
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	request_body {
+		max_size 100MB
+	}
+
+	log {
+		output file /var/log/caddy/sep.log {
+			roll_size 50mb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+}
