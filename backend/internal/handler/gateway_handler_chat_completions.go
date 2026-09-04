@@ -80,10 +80,25 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
 		return
 	}
-	if service.IsGPTImageGenerationModel(reqModel) {
-		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "This model is not supported on the Chat Completions endpoint")
+	// 图片模型（gpt-image-*）允许从 Chat Completions 入口进来：第三方客户端普遍把图片
+	// 模型当普通聊天模型选，第三方聚合上游也原生支持这条路并直接返回内联 base64 图片。
+	// 这里只做分组权限校验，端点分流交给 ForwardAsChatCompletions。
+	if service.IsGPTImageGenerationModel(reqModel) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
+
+	// 档位别名在 Chat Completions 入口只展开模型名、不带 size：上游这条路会忽略
+	// size，展开后至少能正常出图（尺寸取上游默认），比直接 model_not_found 更可用。
+	if aliasBase, _, aliasOK := service.ParseOpenAIImageModelSizeAlias(reqModel); aliasOK {
+		body = h.gatewayService.ReplaceModelInBody(body, aliasBase)
+		reqLog.Info("gateway.chat_completions.image_model_size_alias_expanded",
+			zap.String("requested_model", reqModel),
+			zap.String("base_model", aliasBase),
+		)
+		reqModel = aliasBase
+	}
+
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream)

@@ -954,7 +954,13 @@ func validateOpenAIResponsesImageModel(reqBody map[string]any, model string) err
 	return fmt.Errorf("/v1/responses image_generation requests require a Responses-capable text model; image-only model %q is not allowed", model)
 }
 
-func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
+// normalizeOpenAIResponsesImageOnlyModel 把 "model=gpt-image-*" 的 /responses 请求
+// 归一成官方形状：注入 image_generation 工具、迁移图片参数、改写 model 为主文本模型。
+//
+// keepImageModel=true 时只做工具注入与参数迁移，保留原始 gpt-image-* 模型出站——
+// 供直接售卖图片模型的第三方聚合上游使用，详见
+// Account.ResponsesImageModelPassthroughOverride。
+func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any, keepImageModel bool) bool {
 	if len(reqBody) == 0 {
 		return false
 	}
@@ -1022,6 +1028,9 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 	if _, ok := reqBody["tool_choice"]; !ok {
 		reqBody["tool_choice"] = map[string]any{"type": "image_generation"}
 		modified = true
+	}
+	if keepImageModel {
+		return modified
 	}
 	if imageModel != openAIImagesResponsesMainModel {
 		modified = true

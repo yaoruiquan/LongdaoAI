@@ -7,17 +7,13 @@
 #   2. 用 .env 中的（新）IMAGE_TAG 拉起 TARGET 实例。
 #   3. 轮询 TARGET 变 healthy。
 #   4. 容器内直连对 TARGET 冒烟（放量前验证）；失败即停 TARGET 回滚、不切流量。
-#   5. 观察窗口：Caddy 通过主动健康检查把流量导向 TARGET
-#      （green→blue 在 TARGET healthy 即切；blue→green 在停 CUR 后切，见下）。
+#   5. 观察窗口：Caddy 通过主动健康检查把流量导向 TARGET。
 #   6. 停掉 CUR 实例（SIGTERM → 应用 60s 优雅 drain 在途流式请求）。
 #   7. 写入新活跃色到 .active_color。
 #
-# 关于 lb_policy first 的方向不对称（已在流程中用「先冒烟再放量」消化）：
-#   Caddy 按 Caddyfile 顺序 (blue 先 green 后) 选第一个健康 upstream。
-#     - green->blue：blue healthy 瞬间即被选中放量（green 尚在跑，零丢请求）。
-#     - blue->green：blue 仍健康时 first 继续走 blue，直到停 blue 才切 green。
-#   两方向全程至少一个健康实例在线，故无中断。第 4 步的容器内冒烟保证
-#   「放量的 TARGET 一定已通过健康检查与冒烟」。
+# Caddy 保持 blue/green 双 upstream，并通过主动健康检查只把流量送到健康实例。
+# 第 4 步先对 TARGET 完成容器内冒烟；第 5 步仅校验并 reload 已挂载配置，不重建
+# Caddy。这样目标色就绪后可自动接流量，且不会触碰共享 PostgreSQL/Redis。
 #
 # 用法：
 #   ./deploy/production/switch.sh                 # 切到另一色（用 .env 当前 IMAGE_TAG）
@@ -43,6 +39,52 @@ log()  { printf '\033[1;34m[switch]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
 record() { mkdir -p "$(dirname "${DEPLOY_LOG}")"; printf '%s\n' "$1" >> "${DEPLOY_LOG}"; }
+
+# Shared infrastructure belongs to the production stack, not to a release.
+# A release may verify these services, but must never start, recreate, or stop
+# PostgreSQL/Redis because SEP uses the same instance and Docker network.
+check_shared_services() {
+    local postgres redis postgres_user postgres_db redis_password
+    postgres_user="$(env_val POSTGRES_USER sub2api)"
+    postgres_db="$(env_val POSTGRES_DB sub2api)"
+    redis_password="$(env_val REDIS_PASSWORD)"
+
+    postgres="$(find_shared_container postgres longdao-postgres)"
+    [ -n "${postgres}" ] || { err "共享 PostgreSQL 容器不存在，拒绝发布"; return 1; }
+    [ "$(docker inspect -f '{{.State.Running}}' "${postgres}" 2>/dev/null || true)" = true ] || {
+        err "共享 PostgreSQL 未运行，拒绝发布"; return 1;
+    }
+    docker exec "${postgres}" pg_isready -U "${postgres_user}" -d "${postgres_db}" >/dev/null 2>&1 || {
+        err "共享 PostgreSQL 尚未接受连接，拒绝发布"; return 1;
+    }
+
+    redis="$(find_shared_container redis longdao-redis)"
+    [ -n "${redis}" ] || { err "共享 Redis 容器不存在，拒绝发布"; return 1; }
+    [ "$(docker inspect -f '{{.State.Running}}' "${redis}" 2>/dev/null || true)" = true ] || {
+        err "共享 Redis 未运行，拒绝发布"; return 1;
+    }
+    docker exec -e REDISCLI_AUTH="${redis_password}" "${redis}" redis-cli ping 2>/dev/null | grep -q '^PONG$' || {
+        err "共享 Redis 未正常响应，拒绝发布"; return 1;
+    }
+    log "共享 PostgreSQL/Redis 已就绪，发布不会管理其生命周期。"
+}
+
+# 共享基础设施可能因历史迁移而带有版本后缀（例如 longdao-postgres-pre-pgvector）。
+# 优先使用 Compose service，找不到时仅在运行中容器里按 longdao 名称前缀定位。
+find_shared_container() {
+    local service="$1" prefix="$2" id matches
+    id="$(compose ps -q "${service}" 2>/dev/null | head -n1 || true)"
+    if [ -n "${id}" ] && [ "$(docker inspect -f '{{.State.Running}}' "${id}" 2>/dev/null || true)" = true ]; then
+        printf '%s' "${id}"
+        return 0
+    fi
+
+    matches="$(docker ps --format '{{.ID}} {{.Names}}' | awk -v prefix="${prefix}" '$2 == prefix || index($2, prefix "-") == 1 { print $1 }')"
+    if [ "$(printf '%s\n' "${matches}" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ]; then
+        return 1
+    fi
+    printf '%s' "${matches}"
+}
 
 # 等待某个 service 变 healthy（compose 报告的 health，兜底容器内直连 /health）。
 wait_healthy() {
@@ -93,28 +135,34 @@ log "   commit     : ${COMMIT}"
 log "=============================================================="
 record "$(date -u +%Y-%m-%dT%H:%M:%SZ) SWITCH START ${CUR_COLOR}->${TARGET_COLOR} tag=${IMAGE_TAG} commit=${COMMIT}"
 
-# ---- 1. 确保共享服务在线；强制重建 caddy 使其加载最新 Caddyfile ----------------
-# 注意：caddy reload 在内部 config 应用失败时会悄悄回滚旧配置，退出码仍 0，
-# 无法可靠判断是否生效。因此每次切换都 --force-recreate caddy（≈4s 中断），
-# 确保新 Caddyfile（双 upstream blue/green）一定生效，避免 reload 回滚后
-# 非活跃色删掉导致唯一 upstream 失联 → 503。
-log "[1/6] 确保共享服务在线；强制重建 caddy 加载最新配置..."
-compose up -d postgres redis
-compose up -d --force-recreate caddy
+# ---- 1. 检查共享服务；热加载 Caddy，不重建共享容器 -------------------------
+log "[1/6] 检查共享 PostgreSQL/Redis，并热加载 Caddy（不重建共享容器）..."
+check_shared_services
+
+caddy_id="$(find_shared_container caddy longdao-caddy)"
+if [ -z "${caddy_id}" ]; then
+    err "共享 Caddy 不存在或未运行，拒绝发布"
+    exit 1
+fi
+if ! docker exec "${caddy_id}" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    err "共享 Caddy 配置校验失败，拒绝发布"
+    exit 1
+fi
+docker exec "${caddy_id}" caddy reload --config /etc/caddy/Caddyfile >/dev/null
 
 # 等 caddy 健康（admin API 可用）
 log "  等待 caddy 就绪..."
 caddy_deadline=$(( $(date +%s) + 30 ))
 while [ "$(date +%s)" -lt "${caddy_deadline}" ]; do
-    if compose exec -T caddy wget -q -T 3 -O /dev/null "http://127.0.0.1:2019/config/" >/dev/null 2>&1; then
+    if docker exec "${caddy_id}" wget -q -T 3 -O /dev/null "http://127.0.0.1:2019/config/" >/dev/null 2>&1; then
         break
     fi
     sleep 1
 done
 
-# 验证 Caddy 真的加载了双 upstream 配置（blue 和 green 都应出现）
+# 验证 Caddy 仍加载蓝绿双 upstream，避免发布时误用单色配置。
 log "  验证 caddy 已加载双 upstream 配置..."
-upstreams="$(compose exec -T caddy wget -qO- "http://127.0.0.1:2019/reverse_proxy/upstreams" 2>/dev/null || true)"
+upstreams="$(docker exec "${caddy_id}" wget -qO- "http://127.0.0.1:2019/reverse_proxy/upstreams" 2>/dev/null || true)"
 if ! printf '%s' "${upstreams}" | grep -q "sub2api-blue" || \
    ! printf '%s' "${upstreams}" | grep -q "sub2api-green"; then
     err "caddy 加载的配置不含双 upstream（实际：${upstreams}）"
@@ -156,17 +204,14 @@ if ! SMOKE_SVC="${TARGET_SVC}" BASE_URL="" \
 fi
 log "  ${TARGET_SVC} 冒烟通过。"
 
-# ---- 5. 观察窗口：让 Caddy 主动健康检查把流量导向目标色 -------------------
-# green->blue：blue healthy 时 first 已放量到 blue（CUR=green 仍在线，零丢）。
-# blue->green：first 仍走 blue，直到第 6 步停 blue 才切 green。
+# ---- 5. 观察窗口：Caddy 通过主动健康检查把流量导向 TARGET -------------
 log "[5/6] 观察 ${OBSERVE_SECONDS}s，确认 ${TARGET_SVC} 承接正常..."
 sleep "${OBSERVE_SECONDS}"
 
 # ---- 6. 停掉旧色（优雅 drain）+ 写活跃色 -----------------------------------
 if [ "${KEEP_OLD}" = "1" ]; then
     warn "[6/6] KEEP_OLD=1：保留旧色 ${CUR_SVC} 运行（便于快速回退）。"
-    warn "      注意：blue->green 方向下，只要 blue 仍健康，first 会继续走 blue，"
-    warn "      流量不会切到 green！确认无误后请手动：compose stop ${CUR_SVC}"
+    warn "      Caddy 会优先把流量发给健康的 ${TARGET_SVC}；旧色仅用于快速回退。"
 else
     if is_running "${CUR_SVC}"; then
         log "[6/6] 停掉旧色 ${CUR_SVC}（SIGTERM → 应用 60s 优雅 drain 在途请求）..."

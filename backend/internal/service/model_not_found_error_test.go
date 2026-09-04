@@ -59,6 +59,42 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 	}
 }
 
+func TestIsUpstreamModelNotAllowedError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       []byte
+		want       bool
+	}{
+		{
+			name:       "403 model_not_allowed code",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":{"code":"model_not_allowed","message":"token cannot access this model"}}`),
+			want:       true,
+		},
+		{
+			name:       "403 generic forbidden is not model specific",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":{"code":"forbidden","message":"workspace suspended"}}`),
+			want:       false,
+		},
+		{
+			name:       "non 403 does not match",
+			statusCode: http.StatusBadRequest,
+			body:       []byte(`{"error":{"code":"model_not_allowed"}}`),
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUpstreamModelNotAllowedError(tt.statusCode, tt.body); got != tt.want {
+				t.Fatalf("isUpstreamModelNotAllowedError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAntigravityModelNotFoundKeepsBare404Fallback(t *testing.T) {
 	if !isModelNotFoundError(http.StatusNotFound, []byte(`endpoint not found`)) {
 		t.Fatal("antigravity model-not-found helper should keep bare 404 fallback")

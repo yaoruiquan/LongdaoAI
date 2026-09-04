@@ -16,10 +16,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestChatCompletionsRejectsGPTImageModelsBeforeScheduling(t *testing.T) {
+// 图片模型现在允许从 Chat Completions 入口进入（上游原生支持并直接返回内联图片），
+// 入口只保留分组权限闸门：分组未开生图时必须在调度前 403。
+func TestChatCompletionsRejectsGPTImageModelsWhenGroupForbids(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2"} {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-2-2k"} {
 		for _, tc := range []struct {
 			name string
 			call func(*gin.Context)
@@ -42,9 +44,9 @@ func TestChatCompletionsRejectsGPTImageModelsBeforeScheduling(t *testing.T) {
 
 				tc.call(c)
 
-				require.Equal(t, http.StatusBadRequest, recorder.Code)
-				require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
-				require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "Chat Completions")
+				require.Equal(t, http.StatusForbidden, recorder.Code)
+				require.Equal(t, "permission_error", gjson.Get(recorder.Body.String(), "error.type").String())
+				require.Equal(t, service.ImageGenerationPermissionMessage(), gjson.Get(recorder.Body.String(), "error.message").String())
 				_, selected := c.Get(opsAccountIDKey)
 				require.False(t, selected, "rejection must happen before account selection")
 			})
@@ -70,7 +72,7 @@ func TestOpenAIChatCompletionsImageModelRejectionDoesNotAcquireConcurrency(t *te
 
 	h.ChatCompletions(c)
 
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
 	require.Zero(t, acquireCalls.Load(), "rejection must happen before user/account concurrency and scheduling")
 }
 
@@ -90,7 +92,12 @@ func newOpenAIImageChatRejectionHandlerWithCache(t *testing.T, cache *concurrenc
 }
 
 func setImageChatTestAuth(c *gin.Context) {
-	apiKey := &service.APIKey{ID: 4348, UserID: 4348, User: &service.User{ID: 4348}}
+	apiKey := &service.APIKey{
+		ID:     4348,
+		UserID: 4348,
+		User:   &service.User{ID: 4348},
+		Group:  &service.Group{ID: 4348, AllowImageGeneration: false},
+	}
 	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 1})
 }
