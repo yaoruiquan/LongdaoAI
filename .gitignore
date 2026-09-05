@@ -137,6 +137,12 @@ vite.config.js
 docs/
 !docs/legal/
 !docs/legal/*.md
+
+# Caddy 分站点活配置：每台机器的运行态（SEP 蓝绿切换会改写其中的上游主机名），
+# 跟踪进 git 会让 SEP 每次发版都把本仓库工作区弄脏，卡住 REL-002 干净工作区检查。
+# 只跟踪模板。
+deploy/production/conf.d/*.caddy
+!deploy/production/conf.d/*.caddy.example
 .serena/
 .codex/
 frontend/coverage/
