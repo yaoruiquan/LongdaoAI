@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_active.sh"   # 提供 compose()/env_val()/active_svc()/inactive_svc() 等
 
 # ---- 公共约定（可用环境变量覆盖）------------------------------------------
-IMAGE_REPO="${IMAGE_REPO:-longdao/sub2api}"
+IMAGE_REPO="${IMAGE_REPO:-}"
 DEPLOY_LOG="${DEPLOY_LOG:-deploy/production/deploy.log}"
 
 log()  { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
@@ -49,6 +49,7 @@ abort() {
 [ -f "${COMPOSE_FILE}" ] || abort "找不到 compose 文件：${COMPOSE_FILE}"
 [ -f "${ENV_FILE}" ]     || abort "找不到环境文件：${ENV_FILE}（生产真实值，需先创建）"
 
+IMAGE_REPO="${IMAGE_REPO:-$(env_val IMAGE_REPO longdao/sub2api)}"
 IMAGE_TAG="$(env_val IMAGE_TAG)"
 [ -n "${IMAGE_TAG}" ] || abort ".env 中未设置 IMAGE_TAG（发布版本必须显式指定不可变 tag）"
 
