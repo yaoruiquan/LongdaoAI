@@ -518,6 +518,19 @@ export default {
     }
   },
 
+  availableModels: {
+    title: 'Available Models',
+    description: 'View the models actually available in your accessible groups',
+    searchPlaceholder: 'Search groups or models...',
+    empty: 'No available models',
+    noModels: 'No models are currently available in this group',
+    modelCount: '{count} models',
+    copyModel: 'Copy model name',
+    copyAll: 'Copy all models',
+    copied: 'Copied',
+    loadError: 'Failed to load available models'
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',

@@ -523,6 +523,19 @@ export default {
     }
   },
 
+  availableModels: {
+    title: '可用模型',
+    description: '查看您可访问的分组及其实际可用模型',
+    searchPlaceholder: '搜索分组或模型...',
+    empty: '暂无可用模型',
+    noModels: '该分组暂无可用模型',
+    modelCount: '{count} 个模型',
+    copyModel: '复制模型名',
+    copyAll: '复制全部模型',
+    copied: '已复制',
+    loadError: '加载可用模型失败'
+  },
+
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',

@@ -74,6 +74,7 @@ func RegisterUserRoutes(
 		groups := authenticated.Group("/groups")
 		{
 			groups.GET("/available", h.APIKey.GetAvailableGroups)
+			groups.GET("/available-models", h.AvailableModels.List)
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 

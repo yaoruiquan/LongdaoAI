@@ -19,7 +19,12 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	gocache "github.com/patrickmn/go-cache"
@@ -1223,6 +1228,175 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
+}
+
+// GetEffectiveModels returns the model IDs advertised by GET /v1/models for a group.
+// Keep this calculation in the service layer so user-facing discovery and the gateway
+// endpoint cannot drift apart.
+func (s *GatewayService) GetEffectiveModels(ctx context.Context, group *Group) []string {
+	if group == nil {
+		return nil
+	}
+
+	groupID := group.ID
+	availableModels := s.GetAvailableModels(ctx, &groupID, group.Platform)
+	if group.CustomModelsListEnabled() {
+		return ResolveEffectiveModels(availableModels, group.Platform, group.ModelsListConfig)
+	}
+	if len(availableModels) > 0 {
+		return availableModels
+	}
+	return gatewayFallbackModelIDs(group.Platform)
+}
+
+// gatewayFallbackModelIDs mirrors the non-custom fallback branch in
+// GatewayHandler.Models. In particular, Anthropic falls back to Claude's
+// native list; Antigravity defaults are only used by custom-list resolution.
+func gatewayFallbackModelIDs(platform string) []string {
+	switch platform {
+	case PlatformOpenAI:
+		return openai.DefaultModelIDs()
+	case PlatformGemini:
+		ids := make([]string, 0, len(geminicli.DefaultModels))
+		for _, model := range geminicli.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	default:
+		ids := make([]string, 0, len(claude.DefaultModels))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
+}
+
+// ResolveEffectiveModels applies the same fallback and optional custom-list
+// rules used by GET /v1/models to an already collected account model list.
+func ResolveEffectiveModels(availableModels []string, platform string, config GroupModelsListConfig) []string {
+	fallbackModels := defaultModelIDsForPlatform(platform)
+	if config.Enabled && len(config.Models) > 0 {
+		return filterModelsByCustomList(
+			customModelsListSource(platform, availableModels, fallbackModels),
+			fallbackModels,
+			config.Models,
+		)
+	}
+	if len(availableModels) > 0 {
+		return availableModels
+	}
+	return fallbackModels
+}
+
+func defaultModelIDsForPlatform(platform string) []string {
+	switch platform {
+	case PlatformOpenAI:
+		return openai.DefaultModelIDs()
+	case PlatformGemini:
+		ids := make([]string, 0, len(geminicli.DefaultModels))
+		for _, model := range geminicli.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case PlatformAntigravity:
+		models := antigravity.DefaultModels()
+		ids := make([]string, 0, len(models))
+		for _, model := range models {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case PlatformAnthropic:
+		ids := make([]string, 0, len(claude.DefaultModels)+len(antigravity.DefaultModels()))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		for _, model := range antigravity.DefaultModels() {
+			ids = append(ids, model.ID)
+		}
+		return mergeModelIDs(ids, nil)
+	case PlatformGrok:
+		return xai.DefaultModelIDs()
+	default:
+		ids := make([]string, 0, len(claude.DefaultModels))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
+}
+
+func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
+	if platform == PlatformAnthropic && len(availableModels) > 0 {
+		return mergeModelIDs(availableModels, fallbackModels)
+	}
+	return availableModels
+}
+
+func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {
+	if len(selectedModels) == 0 {
+		return availableModels
+	}
+	source := availableModels
+	if len(source) == 0 {
+		source = fallbackModels
+	}
+	if len(source) == 0 {
+		return nil
+	}
+
+	allowed := make([]string, 0, len(source))
+	for _, model := range source {
+		model = strings.TrimSpace(model)
+		if model != "" {
+			allowed = append(allowed, model)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(selectedModels))
+	filtered := make([]string, 0, len(selectedModels))
+	for _, model := range selectedModels {
+		model = strings.TrimSpace(model)
+		if model == "" || !customModelsListAllowsModel(allowed, model) {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		filtered = append(filtered, model)
+	}
+	return filtered
+}
+
+func customModelsListAllowsModel(availablePatterns []string, model string) bool {
+	for _, pattern := range availablePatterns {
+		if pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeModelIDs(primary, secondary []string) []string {
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	merged := make([]string, 0, len(primary)+len(secondary))
+	for _, models := range [][]string{primary, secondary} {
+		for _, model := range models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			merged = append(merged, model)
+		}
+	}
+	return merged
 }
 
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {
