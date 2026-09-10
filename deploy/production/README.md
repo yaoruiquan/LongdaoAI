@@ -32,7 +32,7 @@
 1. 一台可从公网访问的服务器，已安装 Docker（含 Compose v2）。
 2. 一个**已解析到本机公网 IP 的域名**（Let's Encrypt 需要通过 80/443 完成域名验证）。
 3. 防火墙放行入站 **80 与 443**;这是唯一需要对公网开放的端口。
-4. 已用 `deploy/build_production_image.sh` 构建好版本化镜像（例如 `longdao/sub2api:v2026.07.15-1`），
+4. 已用 Release workflow 发布版本化镜像（例如 `ghcr.io/yaoruiquan/sub2api:2026.07.15-1`），
    并且部署机能拉到/已有该镜像。
 
 ## 快速开始
@@ -112,8 +112,8 @@ docker stop longdao-sub2api && docker rm longdao-sub2api
 
 | 变量 | 必填 | 说明 |
 |------|:---:|------|
-| `IMAGE_REPO` | 否 | 镜像仓库前缀，默认 `longdao/sub2api` |
-| `IMAGE_TAG` | 是 | 版本化不可变 tag，禁止 `latest`，如 `v2026.07.15-1` |
+| `IMAGE_REPO` | 否 | 镜像仓库前缀，默认 `ghcr.io/yaoruiquan/sub2api` |
+| `IMAGE_TAG` | 是 | 版本化不可变 tag，禁止 `latest`，如 `2026.07.15-1` |
 | `LONGDAO_DOMAIN` | 是 | 对外域名，Caddy 据此签发证书 |
 | `LONGDAO_ACME_EMAIL` | 否 | Let's Encrypt 注册邮箱（证书到期通知） |
 | `POSTGRES_PASSWORD` | 是 | 数据库密码 |
@@ -167,9 +167,30 @@ OBSERVE_SECONDS=15 ./switch.sh
 **回滚**（零中断，用旧 tag 部署到目标色再切）：
 
 ```bash
-./rollback.sh v2026.07.16-1  # 回滚到指定历史版本 tag
+./rollback.sh 2026.07.16-1  # 回滚到指定历史版本 tag
 #   若上次发布含不兼容迁移（删列/改类型），先 restore.sh 恢复数据库再回滚。
 ```
+
+## GitHub Actions 自动部署
+
+`.github/workflows/release.yml` 在 Release 成功后提供生产部署 job。为避免未配置凭据时误触发，
+只有 production Environment 变量 `PRODUCTION_DEPLOY_ENABLED=true` 时才会执行。
+
+在 GitHub 仓库的 `Settings -> Environments -> production` 中配置：
+
+| 类型 | 名称 | 示例 |
+|------|------|------|
+| Variable | `PRODUCTION_DEPLOY_ENABLED` | `true` |
+| Variable | `PRODUCTION_SSH_HOST` | `64.83.39.223` |
+| Variable | `PRODUCTION_SSH_USER` | `root` |
+| Variable | `PRODUCTION_DEPLOY_PATH` | `/opt/longdao` |
+| Variable | `PRODUCTION_URL` | `https://longdaoai.cn` |
+| Secret | `PRODUCTION_SSH_PRIVATE_KEY` | 部署专用 SSH 私钥全文 |
+| Secret | `PRODUCTION_SSH_KNOWN_HOSTS` | `ssh-keyscan -H 64.83.39.223` 输出 |
+
+建议为 Actions 单独创建部署密钥，只授权生产机的发布账号，并给 `production` Environment
+配置 required reviewers。工作流会按版本串行执行：拉取不可变 GHCR 镜像 → 备份 → 迁移 →
+蓝绿切换 → 外部 `/health` 检查；部署失败时保留旧活跃色。
 
 ## 数据库迁移
 

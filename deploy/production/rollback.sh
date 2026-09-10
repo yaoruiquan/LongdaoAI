@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_active.sh
 source "${SCRIPT_DIR}/_active.sh"   # 提供 compose()/env_val()/active_svc()/inactive_svc() 等
 
-IMAGE_REPO="${IMAGE_REPO:-longdao/sub2api}"
+IMAGE_REPO="${IMAGE_REPO:-}"
 DEPLOY_LOG="${DEPLOY_LOG:-deploy/production/deploy.log}"
 
 log()  { printf '\033[1;34m[rollback]\033[0m %s\n' "$*"; }
@@ -42,9 +42,12 @@ if [ -z "${ROLLBACK_TAG}" ]; then
     err "用法：$0 <要回滚到的镜像版本 tag，例如 v2026.07.16-1>"
     exit 1
 fi
+# 接受 Git tag 风格的 v 前缀，但生产镜像实际使用去掉 v 的版本号。
+ROLLBACK_TAG="${ROLLBACK_TAG#v}"
 [ -f "${COMPOSE_FILE}" ] || { err "找不到 compose 文件：${COMPOSE_FILE}"; exit 1; }
 [ -f "${ENV_FILE}" ]     || { err "找不到环境文件：${ENV_FILE}"; exit 1; }
 
+IMAGE_REPO="${IMAGE_REPO:-$(env_val IMAGE_REPO longdao/sub2api)}"
 TARGET_IMAGE="${IMAGE_REPO}:${ROLLBACK_TAG}"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 

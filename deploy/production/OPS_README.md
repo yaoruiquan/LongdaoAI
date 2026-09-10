@@ -12,7 +12,7 @@
 | `ENV_FILE` | `deploy/production/.env` | 生产环境变量（真实值，不进仓库） |
 | `BACKUP_DIR` | `deploy/production/backups` | 备份产物目录 |
 | `DEPLOY_LOG` | `deploy/production/deploy.log` | 发布/回滚审计日志 |
-| `IMAGE_REPO` | `longdao/sub2api` | 镜像仓库前缀 |
+| `IMAGE_REPO` | `ghcr.io/yaoruiquan/sub2api` | 镜像仓库前缀 |
 
 所有脚本都通过 `docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ...` 调用，
 路径可用上述环境变量覆盖，便于在不同机器/目录复用。
@@ -64,7 +64,7 @@
 
 ```bash
 # 回滚到上一个不可变版本
-./deploy/production/rollback.sh v2026.07.16-1
+./deploy/production/rollback.sh 2026.07.16-1
 ```
 
 - 用旧 `IMAGE_TAG` 走蓝绿切换：把旧版本部署到**目标色**并放量、再停当前色，

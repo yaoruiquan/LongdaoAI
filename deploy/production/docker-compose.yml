@@ -3,8 +3,8 @@
 # =============================================================================
 # 与上游 deploy/docker-compose.yml 的关键差异（生产收敛）：
 #   1. 镜像固定为自有版本化镜像，禁止 latest：
-#        image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?...}
-#      IMAGE_TAG 必须在 .env 中显式指定（例如 v2026.07.15-1），否则 compose 直接报错。
+#        image: ${IMAGE_REPO:-ghcr.io/yaoruiquan/sub2api}:${IMAGE_TAG:?...}
+#      IMAGE_TAG 必须在 .env 中显式指定（例如 2026.07.15-1），否则 compose 直接报错。
 #   2. 应用不再直接暴露公网：sub2api 移除 ports 映射，对外只经 caddy 反向代理。
 #      唯一对公网开放的端口是 caddy 的 80/443。
 #   3. postgres / redis 不映射任何宿主机端口（仅内部网络可达）。
@@ -41,7 +41,7 @@
 x-sub2api-base: &sub2api-base
   # 固定自有版本化镜像。绝不使用 latest。
   # IMAGE_TAG 用 :? 强制要求在 .env 中指定，缺失即报错，避免误部署。
-  image: ${IMAGE_REPO:-longdao/sub2api}:${IMAGE_TAG:?IMAGE_TAG is required（请在 .env 中指定，例如 v2026.07.15-1）}
+  image: ${IMAGE_REPO:-ghcr.io/yaoruiquan/sub2api}:${IMAGE_TAG:?IMAGE_TAG is required（请在 .env 中指定，例如 2026.07.15-1）}
   restart: unless-stopped
   # 优雅关闭窗口：必须 > 应用内 SHUTDOWN_TIMEOUT_SECONDS（60s），
   # 否则 Docker 会先一步 SIGKILL，切断在途流式请求。留 90s 余量。

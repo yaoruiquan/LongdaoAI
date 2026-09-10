@@ -113,10 +113,15 @@ is_running() {
 [ -f "${COMPOSE_FILE}" ] || { err "找不到 compose 文件：${COMPOSE_FILE}"; exit 1; }
 [ -f "${ENV_FILE}" ]     || { err "找不到环境文件：${ENV_FILE}"; exit 1; }
 
+# IMAGE_REPO 与 compose 使用同一份生产配置；环境变量仍可用于回滚等临时覆盖。
+IMAGE_REPO="${IMAGE_REPO:-$(env_val IMAGE_REPO longdao/sub2api)}"
+export IMAGE_REPO
+
 # IMAGE_TAG 优先取环境变量覆盖（rollback.sh 用旧 tag 调本脚本实现零中断回滚），
 # 否则回退 .env。docker compose 变量替换中 shell 环境变量也优先于 --env-file，
 # 故导出 IMAGE_TAG 后 compose up 会用该值拉起目标色。
 IMAGE_TAG="${IMAGE_TAG:-$(env_val IMAGE_TAG)}"
+IMAGE_TAG="${IMAGE_TAG#v}"
 export IMAGE_TAG
 [ -n "${IMAGE_TAG}" ] || { err "未设置 IMAGE_TAG（.env 或环境变量）"; exit 1; }
 

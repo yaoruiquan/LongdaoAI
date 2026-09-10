@@ -51,6 +51,7 @@ abort() {
 
 IMAGE_REPO="${IMAGE_REPO:-$(env_val IMAGE_REPO longdao/sub2api)}"
 IMAGE_TAG="$(env_val IMAGE_TAG)"
+IMAGE_TAG="${IMAGE_TAG#v}"
 [ -n "${IMAGE_TAG}" ] || abort ".env 中未设置 IMAGE_TAG（发布版本必须显式指定不可变 tag）"
 
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
