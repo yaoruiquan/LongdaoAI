@@ -75,6 +75,7 @@ func RegisterUserRoutes(
 		{
 			groups.GET("/available", h.APIKey.GetAvailableGroups)
 			groups.GET("/available-models", h.AvailableModels.List)
+			groups.POST("/available-models/:id/refresh", h.AvailableModels.Refresh)
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 

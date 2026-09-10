@@ -532,8 +532,10 @@ export default {
     modelCount: '{count} 个模型',
     copyModel: '复制模型名',
     copyAll: '复制全部模型',
+    refreshGroup: '刷新该分组模型',
     copied: '已复制',
-    loadError: '加载可用模型失败'
+    loadError: '加载可用模型失败',
+    refreshError: '刷新分组模型失败'
   },
 
   affiliate: {

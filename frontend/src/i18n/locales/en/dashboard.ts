@@ -527,8 +527,10 @@ export default {
     modelCount: '{count} models',
     copyModel: 'Copy model name',
     copyAll: 'Copy all models',
+    refreshGroup: 'Refresh group models',
     copied: 'Copied',
-    loadError: 'Failed to load available models'
+    loadError: 'Failed to load available models',
+    refreshError: 'Failed to refresh group models'
   },
 
   affiliate: {

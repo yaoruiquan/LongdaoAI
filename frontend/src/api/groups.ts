@@ -39,10 +39,16 @@ export async function getAvailableModels(): Promise<UserAvailableModelsGroup[]> 
   return data
 }
 
+export async function refreshAvailableModels(groupId: number): Promise<UserAvailableModelsGroup> {
+  const { data } = await apiClient.post<UserAvailableModelsGroup>(`/groups/available-models/${groupId}/refresh`)
+  return data
+}
+
 export const userGroupsAPI = {
   getAvailable,
   getUserGroupRates,
-  getAvailableModels
+  getAvailableModels,
+  refreshAvailableModels
 }
 
 export default userGroupsAPI

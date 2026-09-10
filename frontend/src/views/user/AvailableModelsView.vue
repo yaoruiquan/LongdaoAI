@@ -33,15 +33,26 @@
                   </p>
                 </div>
               </div>
-              <button
-                class="btn btn-secondary text-sm"
-                :disabled="group.models.length === 0"
-                :title="t('availableModels.copyAll')"
-                @click="copyGroup(group)"
-              >
-                <Icon :name="copiedGroupId === group.id ? 'check' : 'clipboard'" size="sm" class="mr-1.5" />
-                {{ copiedGroupId === group.id ? t('availableModels.copied') : t('availableModels.copyAll') }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  class="btn btn-secondary px-2.5"
+                  :disabled="refreshingGroupId === group.id || loading"
+                  :title="t('availableModels.refreshGroup')"
+                  @click="refreshGroup(group.id)"
+                >
+                  <Icon name="refresh" size="sm" :class="refreshingGroupId === group.id ? 'animate-spin' : ''" />
+                  <span class="sr-only">{{ t('availableModels.refreshGroup') }}</span>
+                </button>
+                <button
+                  class="btn btn-secondary text-sm"
+                  :disabled="group.models.length === 0"
+                  :title="t('availableModels.copyAll')"
+                  @click="copyGroup(group)"
+                >
+                  <Icon :name="copiedGroupId === group.id ? 'check' : 'clipboard'" size="sm" class="mr-1.5" />
+                  {{ copiedGroupId === group.id ? t('availableModels.copied') : t('availableModels.copyAll') }}
+                </button>
+              </div>
             </div>
 
             <div v-if="group.models.length" class="flex flex-wrap gap-2">
@@ -87,6 +98,7 @@ const { copyToClipboard } = useClipboard()
 const groups = ref<UserAvailableModelsGroup[]>([])
 const searchQuery = ref('')
 const loading = ref(false)
+const refreshingGroupId = ref<number | null>(null)
 const copiedModelKey = ref<string | null>(null)
 const copiedGroupId = ref<number | null>(null)
 
@@ -110,6 +122,20 @@ async function loadModels() {
     appStore.showError(extractApiErrorMessage(err, t('availableModels.loadError')))
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshGroup(groupId: number) {
+  if (refreshingGroupId.value !== null) return
+  refreshingGroupId.value = groupId
+  try {
+    const refreshedGroup = await userGroupsAPI.refreshAvailableModels(groupId)
+    const index = groups.value.findIndex((group) => group.id === groupId)
+    if (index !== -1) groups.value[index] = refreshedGroup
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('availableModels.refreshError')))
+  } finally {
+    refreshingGroupId.value = null
   }
 }
 
