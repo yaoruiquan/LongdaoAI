@@ -317,13 +317,27 @@ jobs:
   deploy-production:
     name: Deploy production
     needs: [release, sync-version-file]
-    if: ${{ needs.release.result == 'success' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    # Environment-scoped vars are not available while GitHub evaluates a
+    # job-level `if`, so the old guard always skipped this job. Keep the
+    # release/event gate here and validate the production flag after the
+    # environment is attached to the job.
+    if: ${{ needs.release.result == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     environment: production
     concurrency:
       group: production
       cancel-in-progress: false
     steps:
+      - name: Check production deployment is enabled
+        env:
+          DEPLOY_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_ENABLED" = "true" || {
+            echo 'PRODUCTION_DEPLOY_ENABLED is not true in the production environment' >&2
+            exit 1
+          }
+
       - name: Configure SSH
         shell: bash
         env:
