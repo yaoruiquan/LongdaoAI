@@ -21,7 +21,7 @@
           <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('availableModels.empty') }}</p>
         </div>
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+        <div v-else class="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-dark-700 lg:[scrollbar-gutter:stable]">
           <section v-for="group in filteredGroups" :key="group.id" class="p-5">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div class="flex min-w-0 items-center gap-3">
