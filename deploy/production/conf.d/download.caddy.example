@@ -1,0 +1,41 @@
+# SEP Client beta artifact download site.
+#
+# Deploy this template as the runtime file below on the download server:
+#   cp download.caddy.example download.caddy
+# The runtime *.caddy file is intentionally ignored because it is per-host
+# deployment state. Keep this example tracked so a fresh server gets the same
+# browser download behavior.
+download.longdaoSEP.cn {
+    tls {$LONGDAO_ACME_EMAIL} {
+        protocols tls1.2 tls1.3
+    }
+
+    root * /etc/caddy/conf.d/downloads
+
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+    }
+
+    # DMG/EXE files must download as attachments instead of being rendered as
+    # a navigated binary document by browsers.
+    @client_artifacts {
+        path *.dmg *.exe
+    }
+    header @client_artifacts {
+        Content-Type "application/octet-stream"
+        Content-Disposition "attachment"
+    }
+
+    file_server
+
+    log {
+        output file /var/log/caddy/sep-client-downloads.log {
+            roll_size 50mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+        level INFO
+    }
+}
