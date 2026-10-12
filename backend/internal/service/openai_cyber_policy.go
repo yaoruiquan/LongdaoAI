@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -85,4 +86,18 @@ func detectOpenAICyberPolicy(payload []byte) (bool, string, string) {
 		msg = gjson.GetBytes(payload, "response.error.message").String()
 	}
 	return true, "cyber_policy", strings.TrimSpace(msg)
+}
+
+// isOpenAISessionPolicyError identifies a rejection scoped to the submitted
+// session. It says nothing about the shared account's credentials or health.
+func isOpenAISessionPolicyError(statusCode int, payload []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	for _, path := range []string{"error.code", "error.type", "response.error.code", "response.error.type"} {
+		if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(payload, path).String()), "session_blocked_by_cyber_policy") {
+			return true
+		}
+	}
+	return false
 }

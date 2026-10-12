@@ -151,6 +151,10 @@ const (
 // CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) ErrorPolicyResult {
+	// A request-local session rejection must not match broad account policies.
+	if account.Platform == PlatformOpenAI && isOpenAISessionPolicyError(statusCode, responseBody) {
+		return ErrorPolicySkipped
+	}
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -170,6 +174,10 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
+	if account.Platform == PlatformOpenAI && isOpenAISessionPolicyError(statusCode, responseBody) {
+		slog.Info("openai_session_policy_account_state_unchanged", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。

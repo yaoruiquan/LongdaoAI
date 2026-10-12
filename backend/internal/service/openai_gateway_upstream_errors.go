@@ -219,6 +219,9 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if isOpenAISessionPolicyError(statusCode, upstreamBody) {
+		return false
+	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
@@ -313,6 +316,28 @@ func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, re
 	s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody)
 }
 
+// handleOpenAISessionPolicyErrorResponse preserves a deterministic session
+// rejection without turning it into a retryable gateway error.
+func (s *OpenAIGatewayService) handleOpenAISessionPolicyErrorResponse(resp *http.Response, c *gin.Context, body []byte) error {
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	if message == "" {
+		message = "This session is blocked by cyber-security policy, please start a new session"
+	}
+	setOpsUpstreamError(c, resp.StatusCode, message, "")
+	MarkResponseCommitted(c)
+	if openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, resp.StatusCode, "session_blocked_by_cyber_policy", message)
+	} else {
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		c.Data(resp.StatusCode, contentType, body)
+	}
+	return fmt.Errorf("openai session policy error: %d", resp.StatusCode)
+}
+
 func (s *OpenAIGatewayService) handleErrorResponse(
 	ctx context.Context,
 	resp *http.Response,
@@ -323,6 +348,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(ctx, account, body)
+	if isOpenAISessionPolicyError(resp.StatusCode, body) {
+		return nil, s.handleOpenAISessionPolicyErrorResponse(resp, c, body)
+	}
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
 	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
@@ -537,6 +565,16 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
+	if isOpenAISessionPolicyError(resp.StatusCode, body) {
+		message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+		if message == "" {
+			message = "This session is blocked by cyber-security policy, please start a new session"
+		}
+		setOpsUpstreamError(c, resp.StatusCode, message, "")
+		MarkResponseCommitted(c)
+		writeError(c, resp.StatusCode, "permission_error", message)
+		return nil, fmt.Errorf("openai session policy error: %d", resp.StatusCode)
+	}
 
 	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，
 	// 不原样透传 responses 格式的 cyber body（否则对下游格式不合法）。cyber 是上游网络

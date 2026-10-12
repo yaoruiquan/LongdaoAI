@@ -612,6 +612,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 ) error {
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
+	if isOpenAISessionPolicyError(resp.StatusCode, body) {
+		return s.handleOpenAISessionPolicyErrorResponse(resp, c, body)
+	}
 
 	// cyber_policy 仍按原始 body 打内部标记，供 handler 事后写风控/邮件；面向客户端的
 	// 错误体在下方统一重建。cyber 是上游网络安全策略拦截，不冷却账号，
