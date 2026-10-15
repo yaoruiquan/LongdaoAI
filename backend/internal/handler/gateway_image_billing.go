@@ -33,6 +33,7 @@ type imagePricingResponse struct {
 	BillingMode             service.BillingMode `json:"billing_mode"`
 	PricingStatus           string              `json:"pricing_status"`
 	PricingSource           string              `json:"pricing_source"`
+	PricingAuthority        string              `json:"pricing_authority,omitempty"`
 	AmountUSD               *string             `json:"amount_usd"`
 	PricingVersion          string              `json:"pricing_version"`
 	ObservedAt              time.Time           `json:"observed_at"`
@@ -95,7 +96,7 @@ func (h *GatewayHandler) ImagePricing(c *gin.Context) {
 		return
 	}
 	response := imagePricingResponse{Object: "sub2api.image_pricing", SchemaVersion: 1, Currency: "USD", imagePricingRequest: request,
-		BillingMode: quote.Mode, PricingStatus: "unavailable", PricingSource: quote.Source, AmountUSD: quote.Amount,
+		BillingMode: quote.Mode, PricingStatus: "unavailable", PricingSource: quote.Source, PricingAuthority: quote.PricingAuthority, AmountUSD: quote.Amount,
 		ObservedAt: now, ExpiresAt: now.Add(time.Minute), EffectiveRateMultiplier: quote.Multiplier}
 	if quote.Amount != nil {
 		response.PricingStatus = "quoted"
@@ -105,9 +106,10 @@ func (h *GatewayHandler) ImagePricing(c *gin.Context) {
 		Request    imagePricingRequest
 		Mode       service.BillingMode
 		Source     string
+		Authority  string
 		Amount     *string
 		Multiplier float64
-	}{request, quote.Mode, quote.Source, quote.Amount, quote.Multiplier})
+	}{request, quote.Mode, quote.Source, quote.PricingAuthority, quote.Amount, quote.Multiplier})
 	sum := sha256.Sum256(fingerprint)
 	response.PricingVersion = "v1:" + hex.EncodeToString(sum[:])
 	c.Header("Cache-Control", "no-store")

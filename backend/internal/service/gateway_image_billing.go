@@ -13,11 +13,14 @@ import (
 
 // ImageBillingQuote describes sub2api's customer charge, not its supplier cost.
 type ImageBillingQuote struct {
-	Mode       BillingMode
-	Source     string
-	Amount     *string
-	Multiplier float64
+	Mode             BillingMode
+	Source           string
+	PricingAuthority string
+	Amount           *string
+	Multiplier       float64
 }
+
+const PricingAuthoritySub2APICustomerBilling = "sub2api_customer_billing"
 
 func BillingUSDString(amount float64) string {
 	return strconv.FormatFloat(amount, 'f', 10, 64)
@@ -60,20 +63,22 @@ func (s *OpenAIGatewayService) QuoteImageBilling(ctx context.Context, key *APIKe
 		quote.Mode, quote.Source, quote.Multiplier = BillingModeToken, PricingSourceChannel, tokenMultiplier
 		return quote, nil
 	}
-	cost, source, explicit := s.imageCostDecision(ctx, billingModel, key, &OpenAIForwardResult{ImageSize: size, ImageCount: count}, imageMultiplier, true)
+	cost, source, deterministic := s.imageCostDecision(ctx, billingModel, key, &OpenAIForwardResult{ImageSize: size, ImageCount: count}, imageMultiplier, true)
 	quote.Source = source
 	if cost != nil {
 		quote.Mode = BillingMode(cost.BillingMode)
-		if explicit && validImageBillingAmount(cost.ActualCost) && validImageBillingAmount(imageMultiplier) {
+		if deterministic && (quote.Mode == BillingModeImage || quote.Mode == BillingModePerRequest) &&
+			validImageBillingAmount(cost.TotalCost) && validImageBillingAmount(cost.ActualCost) && validImageBillingAmount(imageMultiplier) {
 			amount := BillingUSDString(cost.ActualCost)
 			quote.Amount = &amount
+			quote.PricingAuthority = PricingAuthoritySub2APICustomerBilling
 		}
 	}
 	return quote, nil
 }
 
-// Shared by actual image billing and read-only quoting. Quotes never use defaults
-// or context-dependent rates whose final input usage is unknown before execution.
+// Shared by actual image billing and read-only quoting, including existing defaults.
+// The boolean result indicates a deterministic image/per-request calculation.
 func (s *OpenAIGatewayService) imageCostDecision(ctx context.Context, model string, key *APIKey, result *OpenAIForwardResult, multiplier float64, quoteOnly bool) (*CostBreakdown, string, bool) {
 	tier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	if !apiKeyHasConfiguredImagePrice(key, tier) {
@@ -89,10 +94,9 @@ func (s *OpenAIGatewayService) imageCostDecision(ctx context.Context, model stri
 	}
 	if resolved := s.resolveOpenAIChannelPricing(ctx, model, key); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
-		if quoteOnly && !explicitImageChannelPrice(resolved, tier) {
-			return &CostBreakdown{BillingMode: string(resolved.Mode)}, PricingSourceChannel, false
-		}
 		gid := key.Group.ID
+		// Actual image billing also omits Tokens: missing/zero size tiers use the
+		// resolver's zero-context/default price, not future upstream token usage.
 		cost, err := s.billingService.CalculateCostUnified(CostInput{Ctx: ctx, Model: model, GroupID: &gid,
 			RequestCount: result.ImageCount, SizeTier: tier, RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved})
 		if err == nil {
@@ -100,20 +104,7 @@ func (s *OpenAIGatewayService) imageCostDecision(ctx context.Context, model stri
 		}
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
-	if quoteOnly {
-		return nil, PricingSourceFallback, false
-	}
-	return s.billingService.CalculateImageCost(model, tier, result.ImageCount, config, multiplier), PricingSourceFallback, false
-}
-
-func explicitImageChannelPrice(resolved *ResolvedPricing, tier string) bool {
-	for _, interval := range resolved.RequestTiers {
-		if interval.TierLabel == tier && interval.PerRequestPrice != nil && *interval.PerRequestPrice != 0 {
-			return validImageBillingAmount(*interval.PerRequestPrice)
-		}
-	}
-	return len(resolved.RequestTiers) == 0 && resolved.channelPricing != nil &&
-		resolved.channelPricing.PerRequestPrice != nil && validImageBillingAmount(*resolved.channelPricing.PerRequestPrice)
+	return s.billingService.CalculateImageCost(model, tier, result.ImageCount, config, multiplier), PricingSourceFallback, true
 }
 
 // RequestBillingEvidence combines the usage log amount with the billing
