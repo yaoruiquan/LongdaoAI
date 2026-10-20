@@ -645,10 +645,13 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 	for _, path := range []string{
+		"/videos",
+		"/video/generations",
 		"/videos/generations",
 		"/videos/edits",
 		"/videos/extensions",
 		"/videos/request-123",
+		"/videos/request-123/content",
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}

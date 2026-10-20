@@ -43,3 +43,15 @@ func NormalizeVideoBillingResolutionOrDefault(resolution string) string {
 		return VideoBillingResolution480P
 	}
 }
+
+// Provider-neutral billing preserves durations beyond the xAI 15-second limit.
+// Grok request parsing continues to enforce its own provider-specific bounds.
+func normalizeVideoUsageDurationSeconds(model string, seconds int) int {
+	if isGrokVideoBillingModel(model) {
+		return NormalizeVideoBillingDurationSecondsOrDefault(seconds)
+	}
+	if seconds <= 0 {
+		return VideoBillingDefaultDurationSeconds
+	}
+	return seconds
+}

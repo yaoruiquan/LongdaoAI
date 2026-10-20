@@ -170,7 +170,7 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
+func TestGatewayRoutesOpenAIRejectsGrokSpecificVideoGenerationPaths(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
 	for _, tc := range []struct {
@@ -184,8 +184,6 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/v1/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodGet, "/v1/videos/request-123", ""},
-		{http.MethodGet, "/videos/request-123", ""},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
@@ -251,4 +249,28 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+func TestGatewayRoutesOpenAIVideoPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/v1/videos"}, {http.MethodPost, "/videos"},
+		{http.MethodPost, "/v1/video/generations"}, {http.MethodPost, "/video/generations"},
+		{http.MethodGet, "/v1/videos/video_123"}, {http.MethodGet, "/videos/video_123"},
+		{http.MethodGet, "/v1/videos/video_123/content"}, {http.MethodGet, "/videos/video_123/content"},
+	} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"minimax-h3","prompt":"waves"}`)))
+		require.NotEqual(t, http.StatusNotFound, w.Code, "%s %s should hit the video handler", tc.method, tc.path)
+	}
+}
+
+func TestGatewayRoutesNativeOpenAIVideosRejectOtherPlatforms(t *testing.T) {
+	for _, platform := range []string{service.PlatformGrok, service.PlatformAnthropic, service.PlatformGemini} {
+		router := newGatewayRoutesTestRouter(platform)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{"model":"minimax-h3","prompt":"waves"}`)))
+		require.Equal(t, http.StatusNotFound, w.Code)
+		require.Contains(t, w.Body.String(), "only available for OpenAI groups")
+	}
 }

@@ -160,32 +160,39 @@ func TestOpenAIGatewayHandlerSubmitMandatoryUsageRecordTask_DroppedTaskSyncFallb
 	require.True(t, called.Load(), "mandatory usage task must run synchronously when async submit is dropped")
 }
 
-func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_ImageResultUsesMandatoryFallback(t *testing.T) {
-	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
-		WorkerCount:           1,
-		QueueSize:             1,
-		TaskTimeout:           time.Second,
-		OverflowPolicy:        "drop",
-		OverflowSamplePercent: 0,
-		AutoScaleEnabled:      false,
-	})
-	t.Cleanup(pool.Stop)
-	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_MediaResultUsesMandatoryFallback(t *testing.T) {
+	for name, result := range map[string]*service.OpenAIForwardResult{
+		"image": {ImageCount: 1}, "video": {VideoCount: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+				WorkerCount:           1,
+				QueueSize:             1,
+				TaskTimeout:           time.Second,
+				OverflowPolicy:        "drop",
+				OverflowSamplePercent: 0,
+				AutoScaleEnabled:      false,
+			})
+			t.Cleanup(pool.Stop)
+			h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
 
-	block := make(chan struct{})
-	release := make(chan struct{})
-	pool.Submit(func(ctx context.Context) {
-		close(block)
-		<-release
-	})
-	<-block
-	pool.Submit(func(ctx context.Context) {})
+			block := make(chan struct{})
+			release := make(chan struct{})
+			pool.Submit(func(ctx context.Context) {
+				close(block)
+				<-release
+			})
+			<-block
+			pool.Submit(func(ctx context.Context) {})
 
-	var called atomic.Bool
-	h.submitOpenAIUsageRecordTask(context.Background(), &service.OpenAIForwardResult{ImageCount: 1}, func(ctx context.Context) {
-		called.Store(true)
-	})
-	close(release)
+			var called atomic.Bool
+			h.submitOpenAIUsageRecordTask(context.Background(), result, func(ctx context.Context) {
+				called.Store(true)
+			})
+			close(release)
 
-	require.True(t, called.Load(), "image usage task must be mandatory when async submit is dropped")
+			require.True(t, called.Load(), "media usage task must be mandatory when async submit is dropped")
+
+		})
+	}
 }
