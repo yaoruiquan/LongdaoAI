@@ -66,6 +66,29 @@
         />
       </div>
 
+      <div v-if="isVideoTest" class="space-y-3" data-testid="video-test-options">
+        <TextArea
+          v-model="testPrompt"
+          :label="t('admin.accounts.openai.videoTestPrompt')"
+          :placeholder="t('admin.accounts.openai.videoTestPromptDefault')"
+          :disabled="status === 'connecting'"
+          rows="3"
+        />
+        <div class="grid grid-cols-2 gap-3">
+          <label class="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            <span>{{ t('admin.accounts.openai.videoTestSeconds') }}</span>
+            <input v-model.number="videoSeconds" type="number" min="1" step="1" class="input" :disabled="status === 'connecting'" data-testid="video-test-seconds" />
+          </label>
+          <label class="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            <span>{{ t('admin.accounts.openai.videoTestSize') }}</span>
+            <input v-model="videoSize" type="text" class="input" placeholder="1280x720" :disabled="status === 'connecting'" data-testid="video-test-size" />
+          </label>
+        </div>
+        <p class="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          {{ t('admin.accounts.openai.videoTestHint') }}
+        </p>
+      </div>
+
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -81,7 +104,7 @@
       <div class="group relative">
         <div
           ref="terminalRef"
-          class="max-h-[240px] min-h-[120px] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-4 font-mono text-sm dark:border-gray-800 dark:bg-black"
+          class="max-h-[240px] min-h-[120px] overflow-y-auto break-words rounded-xl border border-gray-700 bg-gray-900 p-4 font-mono text-sm dark:border-gray-800 dark:bg-black"
         >
           <!-- Status Line -->
           <div v-if="status === 'idle'" class="flex items-center gap-2 text-gray-500">
@@ -109,7 +132,7 @@
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-green-400"
           >
             <Icon name="check" size="sm" :stroke-width="2" />
-            <span>{{ t('admin.accounts.testCompleted') }}</span>
+            <span>{{ isVideoTest ? t('admin.accounts.openai.videoTestAccepted') : t('admin.accounts.testCompleted') }}</span>
           </div>
           <div
             v-else-if="status === 'error'"
@@ -129,6 +152,13 @@
         >
           <Icon name="link" size="sm" :stroke-width="2" />
         </button>
+      </div>
+
+      <div v-if="videoTask" class="space-y-1 rounded-lg border border-gray-200 p-3 text-sm dark:border-dark-500" data-testid="video-test-task">
+        <div class="font-medium">{{ t('admin.accounts.openai.videoTestTaskID') }}</div>
+        <div class="select-all break-all font-mono">{{ videoTask.id }}</div>
+        <div v-if="videoTask.status">{{ t('admin.accounts.openai.videoTestStatus') }}: {{ videoTask.status }}</div>
+        <p class="text-xs text-gray-500">{{ t('admin.accounts.openai.videoTestTaskHint') }}</p>
       </div>
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
@@ -187,7 +217,9 @@
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
-            supportsImageTest
+            isVideoTest
+              ? t('admin.accounts.openai.testModeVideo')
+              : supportsImageTest
               ? t('admin.accounts.imageTestMode')
               : t('admin.accounts.testPrompt')
           }}
@@ -205,10 +237,10 @@
         </button>
         <button
           @click="startTest"
-          :disabled="status === 'connecting' || !selectedModelId"
+          :disabled="status === 'connecting' || !selectedModelId || !validVideoOptions"
           :class="[
             'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-            status === 'connecting' || !selectedModelId
+            status === 'connecting' || !selectedModelId || !validVideoOptions
               ? 'cursor-not-allowed bg-primary-400 text-white'
               : status === 'success'
                 ? 'bg-green-500 text-white hover:bg-green-600'
@@ -231,8 +263,8 @@
               status === 'connecting'
                 ? t('admin.accounts.testing')
                 : status === 'idle'
-                  ? t('admin.accounts.startTest')
-                  : t('admin.accounts.retry')
+                  ? (isVideoTest ? t('admin.accounts.openai.videoTestSubmit') : t('admin.accounts.startTest'))
+                  : (isVideoTest ? t('admin.accounts.openai.videoTestResubmit') : t('admin.accounts.retry'))
             }}
           </span>
         </button>
@@ -250,6 +282,7 @@ import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
+import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
@@ -286,11 +319,29 @@ const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
-const testMode = ref<'default' | 'compact'>('default')
+const testMode = ref<'default' | 'compact' | 'video'>('default')
+const videoSeconds = ref(6)
+const videoSize = ref('1280x720')
+const videoTask = ref<{ id: string; status?: string } | null>(null)
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const accountSupportsCapability = (capability: string): boolean => {
+  const raw = props.account?.credentials?.openai_capabilities
+  if (raw == null) return true
+  if (Array.isArray(raw)) return raw.includes(capability)
+  return typeof raw === 'object' && (raw as Record<string, unknown>)[capability] === true
+}
+const supportsVideoTest = computed(() => isOpenAIAccount.value && props.account?.type === 'apikey' && accountSupportsCapability('videos'))
+const isVideoOnlyAccount = computed(() => supportsVideoTest.value && !accountSupportsCapability('chat_completions'))
+const isVideoTest = computed(() => supportsVideoTest.value && testMode.value === 'video')
+const validVideoOptions = computed(() => !isVideoTest.value || (
+  Number.isInteger(videoSeconds.value) && videoSeconds.value > 0 && /^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$/.test(videoSize.value.trim())
+))
 const openAITestModeOptions = computed(() => [
-  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  ...(!isVideoOnlyAccount.value ? [
+    { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
+    { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  ] : []),
+  ...(supportsVideoTest.value ? [{ value: 'video', label: t('admin.accounts.openai.testModeVideo') }] : [])
 ])
 const previewImageUrl = ref('')
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
@@ -307,7 +358,7 @@ const supportsOpenAIImageTest = computed(() => {
   return props.account?.platform === 'openai'
 })
 
-const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const supportsImageTest = computed(() => !isVideoTest.value && (supportsGeminiImageTest.value || supportsOpenAIImageTest.value))
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -319,21 +370,6 @@ const sortTestModels = (models: ClaudeModel[]) => {
     return 0
   })
 }
-
-// Load available models when modal opens
-watch(
-  () => props.show,
-  async (newVal) => {
-    if (newVal && props.account) {
-      testPrompt.value = ''
-      testMode.value = 'default'
-      resetState()
-      await loadAvailableModels()
-    } else {
-      abortStream()
-    }
-  }
-)
 
 watch(selectedModelId, () => {
   if (supportsImageTest.value && !testPrompt.value.trim()) {
@@ -378,7 +414,12 @@ const resetState = () => {
   errorMessage.value = ''
   generatedImages.value = []
   previewImageUrl.value = ''
+  videoTask.value = null
 }
+
+watch([testMode, selectedModelId], () => {
+  if (status.value !== 'connecting') resetState()
+})
 
 const handleClose = () => {
   abortStream()
@@ -404,8 +445,25 @@ const scrollToBottom = async () => {
   }
 }
 
+// Load available models when opened, including an initially visible dialog.
+watch(
+  () => [props.show, props.account?.id] as const,
+  async ([newVal]) => {
+    abortStream()
+    if (newVal && props.account) {
+      testPrompt.value = ''
+      testMode.value = isVideoOnlyAccount.value ? 'video' : 'default'
+      videoSeconds.value = 6
+      videoSize.value = '1280x720'
+      resetState()
+      await loadAvailableModels()
+    }
+  },
+  { immediate: true }
+)
+
 const startTest = async () => {
-  if (!props.account || !selectedModelId.value) return
+  if (status.value === 'connecting' || !props.account || !selectedModelId.value || !validVideoOptions.value) return
 
   resetState()
   status.value = 'connecting'
@@ -426,12 +484,14 @@ const startTest = async () => {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        [ADMIN_UI_REQUEST_HEADER]: '1'
       },
       body: JSON.stringify({
         model_id: selectedModelId.value,
-        prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
-        mode: isOpenAIAccount.value ? testMode.value : 'default'
+        prompt: supportsImageTest.value || isVideoTest.value ? testPrompt.value.trim() : '',
+        ...(isOpenAIAccount.value ? { mode: testMode.value } : {}),
+        ...(isVideoTest.value ? { video: { seconds: videoSeconds.value, size: videoSize.value.trim() } } : {})
       }),
       signal: abortController.signal
     })
@@ -470,6 +530,11 @@ const startTest = async () => {
         }
       }
     }
+    if (status.value === 'connecting') {
+      throw new Error(isVideoTest.value
+        ? t('admin.accounts.openai.videoTestInterrupted')
+        : t('admin.accounts.testFailed'))
+    }
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
@@ -490,6 +555,8 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   mime_type?: string
+  task_id?: string
+  status?: string
 }) => {
   switch (event.type) {
     case 'test_start':
@@ -498,7 +565,9 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        supportsImageTest.value
+        isVideoTest.value
+          ? t('admin.accounts.openai.videoTestSending')
+          : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
@@ -527,6 +596,13 @@ const handleEvent = (event: {
           mimeType: event.mime_type
         })
         addLine(t('admin.accounts.imageReceived', { count: generatedImages.value.length }), 'text-purple-300')
+      }
+      break
+
+    case 'video_task':
+      if (event.task_id) {
+        videoTask.value = { id: event.task_id, status: event.status }
+        addLine(`${t('admin.accounts.openai.videoTestTaskID')}: ${event.task_id}`, 'text-purple-300')
       }
       break
 

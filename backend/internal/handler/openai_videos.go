@@ -142,8 +142,16 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 	if accountRelease != nil {
 		defer accountRelease()
 	}
+	var frozenVideoBilling *service.FrozenVideoBilling
 	if create {
-		if err := h.gatewayService.CheckVideoPricing(ctx, apiKey, account, request.Model, channelMapping.MappedModel, request.Resolution); err != nil {
+		var verified bool
+		frozenVideoBilling, verified = h.prepareVideoBilling(c, apiKey, account, request)
+		if !verified {
+			return
+		}
+		if frozenVideoBilling != nil {
+			channelMapping = frozenVideoBilling.Mapping()
+		} else if err := h.gatewayService.CheckVideoPricing(ctx, apiKey, account, request.Model, channelMapping.MappedModel, request.Resolution); err != nil {
 			h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_not_configured", err.Error())
 			return
 		}
@@ -173,6 +181,7 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 			InboundEndpoint: inboundEndpoint, UpstreamEndpoint: service.OpenAIVideosEndpoint,
 			UserAgent: userAgent, IPAddress: clientIP, QuotaPlatform: quotaPlatform,
 			RequestPayloadHash: service.HashUsageRequestPayload(body),
+			FrozenVideoBilling: frozenVideoBilling,
 			ChannelUsageFields: channelMapping.ToUsageFields(requestModel, result.UpstreamModel),
 		}); err != nil {
 			reqLog.Error("openai_videos.record_usage_failed", zap.Error(err))

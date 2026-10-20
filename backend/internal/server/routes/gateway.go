@@ -121,6 +121,8 @@ func RegisterGatewayRoutes(
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.POST("/sub2api/images/pricing", h.Gateway.ImagePricing)
 	gateway.GET("/sub2api/usage", h.Gateway.RequestImageUsage)
+	gateway.POST("/sub2api/videos/pricing", h.Gateway.VideoPricing)
+	gateway.GET("/sub2api/videos/usage", h.Gateway.RequestVideoUsage)
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform

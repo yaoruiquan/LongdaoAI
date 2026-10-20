@@ -97,14 +97,17 @@ func responsesStatusToChatFinishReason(status string, details *ResponsesIncomple
 				return "content_filter"
 			}
 		}
-		return "stop"
+		return ""
 	case "completed":
+		if details != nil {
+			return ""
+		}
 		if len(toolCalls) > 0 {
 			return "tool_calls"
 		}
 		return "stop"
 	default:
-		return "stop"
+		return ""
 	}
 }
 
@@ -140,6 +143,9 @@ func NewResponsesEventToChatState() *ResponsesEventToChatState {
 // ResponsesEventToChatChunks converts a single Responses SSE event into zero
 // or more Chat Completions chunks, updating state as it goes.
 func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if state.Finalized {
+		return nil
+	}
 	switch evt.Type {
 	case "response.created":
 		return resToChatHandleCreated(evt, state)
@@ -292,33 +298,21 @@ func resToChatHandleReasoningDelta(evt *ResponsesStreamEvent, state *ResponsesEv
 
 func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
 	state.Finalized = true
-	finishReason := "stop"
+	response, err := NormalizeResponsesChatTerminal(evt)
+	if err != nil || response.Status == "failed" {
+		return nil
+	}
+	var tools []ChatToolCall
+	if state.SawToolCall {
+		tools = []ChatToolCall{{}}
+	}
+	finishReason := responsesStatusToChatFinishReason(response.Status, response.IncompleteDetails, tools)
 
 	if evt.Usage != nil {
 		state.Usage = chatUsageFromResponsesUsage(evt.Usage)
 	}
-	if evt.Response != nil {
-		if evt.Response.Usage != nil {
-			state.Usage = chatUsageFromResponsesUsage(evt.Response.Usage)
-		}
-
-		switch evt.Response.Status {
-		case "incomplete":
-			if evt.Response.IncompleteDetails != nil {
-				switch evt.Response.IncompleteDetails.Reason {
-				case "max_output_tokens":
-					finishReason = "length"
-				case "content_filter":
-					finishReason = "content_filter"
-				}
-			}
-		case "completed":
-			if state.SawToolCall {
-				finishReason = "tool_calls"
-			}
-		}
-	} else if state.SawToolCall {
-		finishReason = "tool_calls"
+	if response.Usage != nil {
+		state.Usage = chatUsageFromResponsesUsage(response.Usage)
 	}
 
 	var chunks []ChatCompletionsChunk

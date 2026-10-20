@@ -50,6 +50,7 @@ type TestEvent struct {
 	Data     any    `json:"data,omitempty"`
 	Success  bool   `json:"success,omitempty"`
 	Error    string `json:"error,omitempty"`
+	TaskID   string `json:"task_id,omitempty"`
 }
 
 const (
@@ -176,8 +177,8 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
-// mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
+// mode is optional - "compact" probes /responses/compact; "video" submits a native video task.
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, videoOptions ...AccountTestVideoOptions) error {
 	ctx := c.Request.Context()
 
 	// Get account
@@ -185,10 +186,14 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	mode = normalizeAccountTestMode(mode)
+	if mode == AccountTestModeVideo && !account.IsOpenAI() {
+		return s.sendErrorAndEnd(c, "Video testing requires an OpenAI API Key account")
+	}
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
-		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode, videoOptions...)
 	}
 
 	if account.IsGemini() {
@@ -501,9 +506,16 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 }
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, videoOptions ...AccountTestVideoOptions) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
+	if mode == AccountTestModeVideo {
+		var options AccountTestVideoOptions
+		if len(videoOptions) > 0 {
+			options = videoOptions[0]
+		}
+		return s.testOpenAIVideoAccountConnection(c, account, modelID, prompt, options)
+	}
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID
@@ -514,6 +526,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
 	// account model mapping, and compact mode applies compact-only mapping on top.
 	testModelID = account.GetMappedModel(testModelID)
+	if account.Type == AccountTypeAPIKey && !isOpenAIImageModel(testModelID) &&
+		!account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions) {
+		return s.sendErrorAndEnd(c, "Text testing is not enabled for this account; select video mode to submit a video test task")
+	}
 	if mode == AccountTestModeCompact {
 		testModelID = resolveOpenAICompactForwardModel(account, testModelID)
 		return s.testOpenAICompactConnection(c, account, testModelID)

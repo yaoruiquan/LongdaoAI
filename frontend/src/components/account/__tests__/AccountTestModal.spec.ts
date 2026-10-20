@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import AccountTestModal from '../AccountTestModal.vue'
+import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 
 const { getAvailableModelsMock } = vi.hoisted(() => ({
   getAvailableModelsMock: vi.fn()
@@ -188,5 +189,101 @@ describe('AccountTestModal', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('已通过 /v1/chat/completions 验证')
+  })
+
+  it.each([['videos'], { videos: true }])('defaults a video-only account to video submission: %j', async (capabilities) => {
+    getAvailableModelsMock.mockResolvedValue([{ id: 'minimax-h3', display_name: 'MiniMax H3' }])
+    const chunks = [new TextEncoder().encode(
+      'data: {"type":"video_task","task_id":"task_123","status":"queued"}\n\n' +
+      'data: {"type":"test_complete","success":true}\n\n'
+    )]
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => ({ read: vi.fn().mockImplementation(() => Promise.resolve(
+        chunks.length ? { done: false, value: chunks.shift() } : { done: true }
+      )) }) }
+    } as any)
+    const account = { ...buildAccount(), type: 'apikey', credentials: { openai_capabilities: capabilities } }
+    const wrapper = mount(AccountTestModal, {
+      props: { show: true, account },
+      global: { stubs: { BaseDialog: BaseDialogStub, Select: SelectStub, TextArea: TextAreaStub, Icon: true } }
+    })
+    await flushPromises()
+    expect(getAvailableModelsMock).toHaveBeenCalledWith(account.id)
+    expect(wrapper.find('[data-testid="video-test-options"]').exists()).toBe(true)
+    const modeOptions = wrapper.findAll('select')[1].findAll('option')
+    expect(modeOptions.map((o) => o.attributes('value'))).toEqual(['video'])
+    await wrapper.find('textarea').setValue('paper boat')
+    await wrapper.find('[data-testid="video-test-seconds"]').setValue('10')
+    await wrapper.find('[data-testid="video-test-size"]').setValue('1920x1080')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, options] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(options.body)).toEqual({
+      model_id: 'minimax-h3', mode: 'video', prompt: 'paper boat', video: { seconds: 10, size: '1920x1080' }
+    })
+    expect(options.headers[ADMIN_UI_REQUEST_HEADER]).toBe('1')
+    expect(wrapper.get('[data-testid="video-test-task"]').text()).toContain('task_123')
+    expect(wrapper.get('[data-testid="video-test-task"]').text()).toContain('queued')
+    expect(wrapper.text()).toContain('admin.accounts.openai.videoTestAccepted')
+    expect(wrapper.text()).not.toContain('admin.accounts.testCompleted')
+    wrapper.unmount()
+  })
+
+  it('lets mixed accounts explicitly choose video without changing their default text mode', async () => {
+    const wrapper = mount(AccountTestModal, {
+      props: { show: true, account: { ...buildAccount(), type: 'apikey' } },
+      global: { stubs: { BaseDialog: BaseDialogStub, Select: SelectStub, TextArea: TextAreaStub, Icon: true } }
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="video-test-options"]').exists()).toBe(false)
+    await wrapper.findAll('select')[1].setValue('video')
+    expect(wrapper.find('[data-testid="video-test-options"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="video-test-seconds"]').setValue('-1')
+    await (wrapper.vm as any).startTest()
+    expect(global.fetch).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('reports an interrupted video submission without success or automatic retries', async () => {
+    const wrapper = mount(AccountTestModal, {
+      props: { show: true, account: { ...buildAccount(), type: 'apikey', credentials: { openai_capabilities: ['videos'] } } },
+      global: { stubs: { BaseDialog: BaseDialogStub, Select: SelectStub, TextArea: TextAreaStub, Icon: true } }
+    })
+    await flushPromises()
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('admin.accounts.openai.videoTestInterrupted')
+    expect(wrapper.text()).not.toContain('admin.accounts.openai.videoTestAccepted')
+    wrapper.unmount()
+  })
+
+  it('prevents concurrent video submissions and clears results when changing mode', async () => {
+    let finishRequest!: (response: Response) => void
+    global.fetch = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => {
+      finishRequest = resolve
+    }))
+    const wrapper = mount(AccountTestModal, {
+      props: { show: true, account: { ...buildAccount(), type: 'apikey' } },
+      global: { stubs: { BaseDialog: BaseDialogStub, Select: SelectStub, TextArea: TextAreaStub, Icon: true } }
+    })
+    await flushPromises()
+    await wrapper.findAll('select')[1].setValue('video')
+    const firstRequest = (wrapper.vm as any).startTest()
+    await (wrapper.vm as any).startTest()
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    finishRequest(new Response(
+      'data: {"type":"video_task","task_id":"task_123","status":"queued"}\n\n' +
+      'data: {"type":"test_complete","success":true}\n\n'
+    ))
+    await firstRequest
+    await flushPromises()
+    expect(wrapper.find('[data-testid="video-test-task"]').exists()).toBe(true)
+    await wrapper.findAll('select')[1].setValue('default')
+    expect(wrapper.find('[data-testid="video-test-task"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.accounts.testCompleted')
+    wrapper.unmount()
   })
 })

@@ -565,6 +565,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
 	logPrefix string,
 	requestID string,
+	observers ...func(*apicompat.ResponsesStreamEvent, []byte) error,
 ) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
 	var usage OpenAIUsage
@@ -636,6 +637,29 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	defer close(done)
 
 	var parser openAICompatSSEFrameParser
+	processEvent := func(event *apicompat.ResponsesStreamEvent, raw []byte) (*apicompat.ResponsesResponse, error) {
+		if isOpenAICompatResponsesTerminalEvent(event.Type) {
+			if event.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+			}
+			if event.Response != nil && event.Response.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+			}
+		}
+		for _, observe := range observers {
+			if err := observe(event, raw); err != nil {
+				return nil, err
+			}
+		}
+		acc.ProcessEvent(event)
+		if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+			if event.Response.Usage == nil {
+				event.Response.Usage = event.Usage
+			}
+			return event.Response, nil
+		}
+		return nil, nil
+	}
 	for {
 		select {
 		case ev, ok := <-events:
@@ -644,18 +668,8 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
-						acc.ProcessEvent(&event)
-						if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
-							if event.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
-								if event.Response.Usage == nil {
-									event.Response.Usage = event.Usage
-								}
-							}
-							if event.Response.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
-							}
-							return event.Response, usage, acc, nil
+						if terminal, err := processEvent(&event, []byte(payload)); err != nil || terminal != nil {
+							return terminal, usage, acc, err
 						}
 					}
 				}
@@ -690,19 +704,8 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				continue
 			}
 
-			acc.ProcessEvent(&event)
-
-			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
-				if event.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
-					if event.Response.Usage == nil {
-						event.Response.Usage = event.Usage
-					}
-				}
-				if event.Response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
-				}
-				return event.Response, usage, acc, nil
+			if terminal, err := processEvent(&event, []byte(payload)); err != nil || terminal != nil {
+				return terminal, usage, acc, err
 			}
 
 		case <-timeoutCh:

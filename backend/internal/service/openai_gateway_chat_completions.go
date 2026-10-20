@@ -413,9 +413,29 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	audit := newOpenAIChatConversionAudit()
+	defer func() {
+		if audit.IsSuspicious() {
+			logger.L().Warn("openai chat_completions: suspicious Responses conversion",
+				append([]zap.Field{zap.String("request_id", requestID), zap.String("model", originalModel), zap.String("upstream_model", upstreamModel)}, audit.Fields()...)...)
+		}
+	}()
 
-	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID)
+	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID,
+		func(event *apicompat.ResponsesStreamEvent, raw []byte) error {
+			audit.ObserveEvent(event)
+			audit.ObserveRawUsageJSON(raw)
+			if !isOpenAICompatResponsesTerminalEvent(event.Type) {
+				return nil
+			}
+			normalized, err := apicompat.NormalizeResponsesChatTerminal(event)
+			if err == nil {
+				event.Response = normalized
+			}
+			return err
+		})
 	if err != nil {
+		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Invalid or incomplete upstream response")
 		return nil, err
 	}
 
@@ -469,6 +489,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	acc.SupplementResponseOutput(finalResponse)
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
+	audit.ObserveResponse(chatResp)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -504,6 +525,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	requestBodyLen int,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	audit := newOpenAIChatConversionAudit()
+	defer func() {
+		if audit.IsSuspicious() {
+			logger.L().Warn("openai chat_completions: suspicious Responses conversion",
+				append([]zap.Field{zap.String("request_id", requestID), zap.String("model", originalModel), zap.String("upstream_model", upstreamModel)}, audit.Fields()...)...)
+		}
+	}()
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
@@ -567,6 +595,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		refusalDetector.ObservePayload([]byte(payload))
+		audit.ObserveEvent(&event)
+		audit.ObserveRawUsageJSON([]byte(payload))
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
@@ -576,8 +606,22 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if event.Response != nil && event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
+			normalized, err := apicompat.NormalizeResponsesChatTerminal(&event)
+			if err != nil {
+				streamNonFailoverErr = err
+				if !clientDisconnected {
+					if !c.Writer.Written() {
+						writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Invalid upstream terminal response")
+					} else {
+						_, _ = fmt.Fprint(c.Writer, buildChatStreamErrorSSE("upstream_error", "Invalid upstream terminal response"))
+						c.Writer.Flush()
+					}
+				}
+				return true
+			}
+			event.Response = normalized
 		}
-		if strings.TrimSpace(event.Type) == "response.failed" {
+		if isTerminalEvent && event.Response.Status == "failed" {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
@@ -655,6 +699,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				audit.ObserveChunk(chunk)
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {

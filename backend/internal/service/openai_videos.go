@@ -283,6 +283,13 @@ func (s *OpenAIGatewayService) ForwardVideo(ctx context.Context, c *gin.Context,
 		return nil, fmt.Errorf("video upstream request failed: %s", sanitizeUpstreamErrorMessage(err.Error()))
 	}
 	defer resp.Body.Close()
+	// These are relay-owned billing/correlation signals, even when operators
+	// allow additional upstream headers. Never let a provider forge rejection.
+	for name := range resp.Header {
+		if strings.EqualFold(name, "X-Video-Dispatch") || strings.EqualFold(name, "X-Client-Request-ID") {
+			delete(resp.Header, name)
+		}
+	}
 	if resp.StatusCode >= 400 {
 		responseBody := s.readUpstreamErrorBody(resp)
 		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, responseBody, billingModel)
