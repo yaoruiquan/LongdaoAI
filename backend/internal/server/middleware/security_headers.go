@@ -34,6 +34,8 @@ var requiredCSPDirectiveValues = []struct {
 	directive string
 	value     string
 }{
+	{"media-src", "'self'"},
+	{"media-src", "blob:"},
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", StripeDomain},
 	{"frame-src", StripeDomain},

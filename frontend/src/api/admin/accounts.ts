@@ -243,6 +243,24 @@ export async function testAccount(id: number): Promise<{
   return data
 }
 
+export interface VideoTestTask {
+  id: string
+  status: string
+  error?: string
+}
+
+export async function getVideoTestTask(id: number, taskId: string, signal?: AbortSignal): Promise<VideoTestTask> {
+  const { data } = await apiClient.get<VideoTestTask>(`/admin/accounts/${id}/video-tasks/${encodeURIComponent(taskId)}`, { signal })
+  return data
+}
+
+export async function getVideoTestContent(id: number, taskId: string, signal?: AbortSignal): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/accounts/${id}/video-tasks/${encodeURIComponent(taskId)}/content`, {
+    signal, responseType: 'blob', timeout: 180000
+  })
+  return data
+}
+
 /**
  * Refresh account credentials
  * @param id - Account ID
@@ -893,6 +911,8 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
+  getVideoTestTask,
+  getVideoTestContent,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

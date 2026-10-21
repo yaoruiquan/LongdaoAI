@@ -1033,6 +1033,66 @@ type TestAccountRequest struct {
 	Video   service.AccountTestVideoOptions `json:"video"`
 }
 
+// GetVideoTestTask proxies a status query to the upstream account used by an admin video test.
+// GET /api/v1/admin/accounts/:id/video-tasks/:task_id
+func (h *AccountHandler) GetVideoTestTask(c *gin.Context) {
+	accountID, taskID, ok := parseVideoTestPath(c)
+	if !ok {
+		return
+	}
+	task, err := h.accountTestService.GetOpenAIVideoTestTask(c.Request.Context(), accountID, taskID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	response.Success(c, task)
+}
+
+// GetVideoTestContent streams video content from the upstream account used by an admin video test.
+// GET /api/v1/admin/accounts/:id/video-tasks/:task_id/content
+func (h *AccountHandler) GetVideoTestContent(c *gin.Context) {
+	accountID, taskID, ok := parseVideoTestPath(c)
+	if !ok {
+		return
+	}
+	resp, err := h.accountTestService.GetOpenAIVideoTestContent(c.Request.Context(), accountID, taskID, c.GetHeader("Range"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	defer resp.Body.Close()
+	for _, name := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if value := resp.Header.Get(name); value != "" {
+			c.Header(name, value)
+		}
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Status(resp.StatusCode)
+	_, _ = io.Copy(c.Writer, resp.Body)
+}
+
+func parseVideoTestPath(c *gin.Context) (int64, string, bool) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return 0, "", false
+	}
+	taskID := c.Param("task_id")
+	if taskID == "" || taskID == "." || taskID == ".." || len(taskID) > 256 {
+		response.BadRequest(c, "Invalid video task ID")
+		return 0, "", false
+	}
+	for _, ch := range taskID {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_' || ch == '.') {
+			response.BadRequest(c, "Invalid video task ID")
+			return 0, "", false
+		}
+	}
+	return accountID, taskID, true
+}
+
 type SyncFromCRSRequest struct {
 	BaseURL            string   `json:"base_url" binding:"required"`
 	Username           string   `json:"username" binding:"required"`

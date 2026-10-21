@@ -48,6 +48,19 @@ func TestGenerateNonce(t *testing.T) {
 	})
 }
 
+func TestSecurityHeadersAllowAuthenticatedVideoBlobPlayback(t *testing.T) {
+	for _, policy := range []string{"", "default-src 'self'", "default-src 'self'; media-src 'self'"} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/admin/accounts", nil)
+		SecurityHeaders(config.CSPConfig{Enabled: true, Policy: policy}, nil)(c)
+		csp := w.Header().Get("Content-Security-Policy")
+		require.True(t, directiveHasValue(csp, "media-src", "blob:"), csp)
+		require.True(t, directiveHasValue(csp, "media-src", "'self'"), csp)
+		require.False(t, directiveHasValue(csp, "media-src", "https:"), "only local authenticated blobs are needed")
+	}
+}
+
 func TestGetNonceFromContext(t *testing.T) {
 	t.Run("returns_nonce_when_present", func(t *testing.T) {
 		w := httptest.NewRecorder()

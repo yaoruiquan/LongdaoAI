@@ -87,6 +87,16 @@
         <p class="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
           {{ t('admin.accounts.openai.videoTestHint') }}
         </p>
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="min-w-0 flex-1 space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            <span>{{ t('admin.accounts.openai.videoTestExistingTask') }}</span>
+            <input v-model="videoTaskIDInput" type="text" maxlength="256" class="input" :placeholder="t('admin.accounts.openai.videoTestTaskID')" :disabled="status === 'connecting' || videoTaskLoading" data-testid="video-test-existing-id" />
+          </label>
+          <button type="button" class="btn btn-secondary rounded-lg px-3 py-2" :disabled="!validExistingVideoTask || status === 'connecting' || videoTaskLoading" data-testid="video-test-lookup" @click="lookupVideoTask">
+            <Icon name="refresh" size="sm" />
+            {{ t('admin.accounts.openai.videoTestLookup') }}
+          </button>
+        </div>
       </div>
 
       <div v-if="supportsImageTest" class="space-y-1.5">
@@ -129,10 +139,11 @@
           <!-- Result Status -->
           <div
             v-if="status === 'success'"
-            class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-green-400"
+            class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3"
+            :class="videoTaskFailed ? 'text-red-400' : 'text-green-400'"
           >
-            <Icon name="check" size="sm" :stroke-width="2" />
-            <span>{{ isVideoTest ? t('admin.accounts.openai.videoTestAccepted') : t('admin.accounts.testCompleted') }}</span>
+            <Icon :name="videoTaskFailed ? 'x' : 'check'" size="sm" :stroke-width="2" />
+            <span>{{ isVideoTest ? videoTestResultMessage : t('admin.accounts.testCompleted') }}</span>
           </div>
           <div
             v-else-if="status === 'error'"
@@ -159,7 +170,21 @@
         <div class="select-all break-all font-mono">{{ videoTask.id }}</div>
         <div v-if="videoTask.status">{{ t('admin.accounts.openai.videoTestStatus') }}: {{ videoTask.status }}</div>
         <p class="text-xs text-gray-500">{{ t('admin.accounts.openai.videoTestTaskHint') }}</p>
+        <div class="flex flex-wrap gap-2 pt-2">
+          <button type="button" class="btn btn-secondary rounded-lg px-3 py-2" :disabled="videoTaskLoading" data-testid="video-test-refresh" @click="refreshVideoTask">
+            <Icon name="refresh" size="sm" :class="{ 'animate-spin': videoTaskLoading }" />
+            {{ videoTaskLoading ? t('admin.accounts.openai.videoTestRefreshing') : t('admin.accounts.openai.videoTestRefresh') }}
+          </button>
+          <a v-if="videoObjectUrl" :href="videoObjectUrl" :download="`${videoTask.id}.mp4`" class="btn btn-secondary rounded-lg px-3 py-2" data-testid="video-test-download">
+            <Icon name="download" size="sm" />
+            {{ t('admin.accounts.openai.videoTestDownload') }}
+          </a>
+        </div>
+        <p v-if="videoTask.error" class="break-words text-red-600 dark:text-red-400">{{ videoTask.error }}</p>
+        <p v-if="videoPlaybackError" class="break-words text-red-600 dark:text-red-400">{{ videoPlaybackError }}</p>
       </div>
+
+      <video v-if="videoObjectUrl" :src="videoObjectUrl" controls playsinline class="aspect-video max-h-[55vh] w-full rounded-lg bg-black object-contain" data-testid="video-test-player" @error="handleVideoPlaybackError" />
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -274,7 +299,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -322,7 +347,14 @@ const generatedImages = ref<PreviewImage[]>([])
 const testMode = ref<'default' | 'compact' | 'video'>('default')
 const videoSeconds = ref(6)
 const videoSize = ref('1280x720')
-const videoTask = ref<{ id: string; status?: string } | null>(null)
+const videoTaskIDInput = ref('')
+const validExistingVideoTask = computed(() => /^[A-Za-z0-9_.-]{1,256}$/.test(videoTaskIDInput.value.trim()) && !['.', '..'].includes(videoTaskIDInput.value.trim()))
+const videoTask = ref<{ id: string; status?: string; error?: string; createdAt?: number } | null>(null)
+const videoTaskLoading = ref(false)
+const videoPlaybackError = ref('')
+const videoObjectUrl = ref('')
+let videoRequestController: AbortController | null = null
+const videoTaskStorageKey = computed(() => props.account ? `sub2api:admin:video-test:v1:${props.account.id}` : '')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const accountSupportsCapability = (capability: string): boolean => {
   const raw = props.account?.credentials?.openai_capabilities
@@ -333,6 +365,15 @@ const accountSupportsCapability = (capability: string): boolean => {
 const supportsVideoTest = computed(() => isOpenAIAccount.value && props.account?.type === 'apikey' && accountSupportsCapability('videos'))
 const isVideoOnlyAccount = computed(() => supportsVideoTest.value && !accountSupportsCapability('chat_completions'))
 const isVideoTest = computed(() => supportsVideoTest.value && testMode.value === 'video')
+const videoTaskFailed = computed(() => ['failed', 'error', 'cancelled', 'canceled', 'expired'].includes(videoTask.value?.status?.toLowerCase() || ''))
+const videoTestResultMessage = computed(() => {
+  if (videoTaskFailed.value) return t('admin.accounts.openai.videoTestFailed')
+  if (videoObjectUrl.value) return t('admin.accounts.openai.videoTestReady')
+  if (['completed', 'succeeded', 'success', 'finished'].includes(videoTask.value?.status?.toLowerCase() || '')) {
+    return t('admin.accounts.openai.videoTestGenerated')
+  }
+  return t('admin.accounts.openai.videoTestAccepted')
+})
 const validVideoOptions = computed(() => !isVideoTest.value || (
   Number.isInteger(videoSeconds.value) && videoSeconds.value > 0 && /^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$/.test(videoSize.value.trim())
 ))
@@ -377,13 +418,16 @@ watch(selectedModelId, () => {
   }
 })
 
+let modelLoadVersion = 0
 const loadAvailableModels = async () => {
   if (!props.account) return
-
+  const account = props.account
+  const version = ++modelLoadVersion
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const models = await adminAPI.accounts.getAvailableModels(account.id)
+    if (version !== modelLoadVersion || !props.show || props.account?.id !== account.id) return
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
@@ -398,16 +442,20 @@ const loadAvailableModels = async () => {
       }
     }
   } catch (error) {
+    if (version !== modelLoadVersion || !props.show || props.account?.id !== account.id) return
     console.error('Failed to load available models:', error)
     // Fallback to empty list
     availableModels.value = []
     selectedModelId.value = ''
   } finally {
-    loadingModels.value = false
+    if (version === modelLoadVersion) loadingModels.value = false
   }
 }
 
 const resetState = () => {
+  cancelVideoRequest()
+  setVideoObjectUrl('')
+  videoPlaybackError.value = ''
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -423,8 +471,109 @@ watch([testMode, selectedModelId], () => {
 
 const handleClose = () => {
   abortStream()
+  cancelVideoRequest()
+  setVideoObjectUrl('')
   emit('close')
 }
+
+const setVideoObjectUrl = (url: string) => {
+  if (videoObjectUrl.value) URL.revokeObjectURL(videoObjectUrl.value)
+  videoObjectUrl.value = url
+}
+
+const handleVideoPlaybackError = () => {
+  videoPlaybackError.value = t('admin.accounts.openai.videoTestPlaybackFailed')
+  setVideoObjectUrl('')
+}
+
+const cancelVideoRequest = () => {
+  videoRequestController?.abort()
+  videoRequestController = null
+  videoTaskLoading.value = false
+}
+
+const persistVideoTask = () => {
+  if (!videoTaskStorageKey.value || !videoTask.value) return
+  try {
+    sessionStorage.setItem(videoTaskStorageKey.value, JSON.stringify({ accountId: props.account?.id, ...videoTask.value }))
+  } catch {
+    // The current task remains usable when browser storage is unavailable.
+  }
+}
+
+const restoreVideoTask = () => {
+  if (!supportsVideoTest.value || !videoTaskStorageKey.value) return
+  try {
+    const raw = sessionStorage.getItem(videoTaskStorageKey.value)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (!saved || saved.accountId !== props.account?.id || typeof saved.id !== 'string' ||
+        !/^[A-Za-z0-9_.-]{1,256}$/.test(saved.id) || ['.', '..'].includes(saved.id)) return
+    testMode.value = 'video'
+    // Apply the mode watch before restoring its task.
+    return nextTick().then(() => {
+      if (!props.show || saved.accountId !== props.account?.id) return
+      videoTask.value = {
+        id: saved.id,
+        status: typeof saved.status === 'string' ? saved.status : '',
+        error: typeof saved.error === 'string' ? saved.error : undefined,
+        createdAt: saved.createdAt
+      }
+      status.value = 'success'
+    })
+  } catch {
+    // Ignore unavailable storage and malformed records.
+  }
+}
+
+const refreshVideoTask = async () => {
+  if (!props.account || !videoTask.value || videoTaskLoading.value) return
+  const accountID = props.account.id
+  const taskID = videoTask.value.id
+  const controller = new AbortController()
+  videoRequestController = controller
+  videoTaskLoading.value = true
+  videoPlaybackError.value = ''
+  const isCurrent = () => videoRequestController === controller && !controller.signal.aborted &&
+    props.show && props.account?.id === accountID && videoTask.value?.id === taskID
+  try {
+    const task = await adminAPI.accounts.getVideoTestTask(accountID, taskID, controller.signal)
+    if (!isCurrent()) return
+    status.value = 'success'
+    videoTask.value = { ...videoTask.value!, status: task.status, error: task.error }
+    persistVideoTask()
+    if (['completed', 'succeeded', 'success', 'finished'].includes(task.status.toLowerCase())) {
+      if (!videoObjectUrl.value) {
+        const content = await adminAPI.accounts.getVideoTestContent(accountID, taskID, controller.signal)
+        if (!isCurrent()) return
+        setVideoObjectUrl(URL.createObjectURL(content))
+      }
+    } else {
+      setVideoObjectUrl('')
+    }
+  } catch (error) {
+    if (!isCurrent()) return
+    videoPlaybackError.value = (error as { message?: string })?.message || t('admin.accounts.openai.videoTestQueryFailed')
+  } finally {
+    if (videoRequestController === controller) {
+      videoRequestController = null
+      videoTaskLoading.value = false
+    }
+  }
+}
+
+const lookupVideoTask = async () => {
+  if (!validExistingVideoTask.value || !supportsVideoTest.value || status.value === 'connecting' || videoTaskLoading.value) return
+  resetState()
+  videoTask.value = { id: videoTaskIDInput.value.trim(), createdAt: Date.now() }
+  await refreshVideoTask()
+}
+
+onBeforeUnmount(() => {
+  abortStream()
+  cancelVideoRequest()
+  setVideoObjectUrl('')
+})
 
 const abortStream = () => {
   if (abortController) {
@@ -446,17 +595,23 @@ const scrollToBottom = async () => {
 }
 
 // Load available models when opened, including an initially visible dialog.
+let dialogVersion = 0
 watch(
   () => [props.show, props.account?.id] as const,
   async ([newVal]) => {
+    const version = ++dialogVersion
     abortStream()
+    resetState()
     if (newVal && props.account) {
+      const accountID = props.account.id
       testPrompt.value = ''
       testMode.value = isVideoOnlyAccount.value ? 'video' : 'default'
       videoSeconds.value = 6
       videoSize.value = '1280x720'
-      resetState()
+      videoTaskIDInput.value = ''
       await loadAvailableModels()
+      await nextTick()
+      if (version === dialogVersion && props.show && props.account?.id === accountID) await restoreVideoTask()
     }
   },
   { immediate: true }
@@ -473,7 +628,11 @@ const startTest = async () => {
 
   abortStream()
 
-  abortController = new AbortController()
+  const controller = new AbortController()
+  abortController = controller
+  const accountID = props.account.id
+  const isCurrent = () => abortController === controller && !controller.signal.aborted &&
+    props.show && props.account?.id === accountID
 
   try {
     // Use the configured API base; EventSource does not support POST.
@@ -493,8 +652,10 @@ const startTest = async () => {
         ...(isOpenAIAccount.value ? { mode: testMode.value } : {}),
         ...(isVideoTest.value ? { video: { seconds: videoSeconds.value, size: videoSize.value.trim() } } : {})
       }),
-      signal: abortController.signal
+      signal: controller.signal
     })
+
+    if (!isCurrent()) return
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
@@ -510,6 +671,7 @@ const startTest = async () => {
 
     while (true) {
       const { done, value } = await reader.read()
+      if (!isCurrent()) { await reader.cancel(); return }
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
@@ -536,6 +698,7 @@ const startTest = async () => {
         : t('admin.accounts.testFailed'))
     }
   } catch (error: unknown) {
+    if (!isCurrent()) return
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
       return
@@ -601,7 +764,8 @@ const handleEvent = (event: {
 
     case 'video_task':
       if (event.task_id) {
-        videoTask.value = { id: event.task_id, status: event.status }
+        videoTask.value = { id: event.task_id, status: event.status, createdAt: Date.now() }
+        persistVideoTask()
         addLine(`${t('admin.accounts.openai.videoTestTaskID')}: ${event.task_id}`, 'text-purple-300')
       }
       break
