@@ -381,8 +381,10 @@ jobs:
           set -euo pipefail
           cd "$DEPLOY_PATH"
           git fetch origin main
-          git checkout main
-          git pull --ff-only origin main
+          # Production keeps local Caddy/Compose overrides for shared services.
+          # Fetch the release ref for auditability, but never overwrite or merge
+          # the deployment working tree during an application image rollout.
+          test -x deploy/production/deploy.sh
           test -f deploy/production/.env
           if grep -q '^IMAGE_REPO=' deploy/production/.env; then
             sed -i 's#^IMAGE_REPO=.*#IMAGE_REPO=ghcr.io/yaoruiquan/sub2api#' deploy/production/.env
